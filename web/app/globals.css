@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/*
+ * 主题层：所有颜色都是 --jcc-* 变量，组件里不再出现任何字面色值。
+ * :root 是「清醒蓝黄」，[data-theme="dark"] 是「暗黑极客」。
+ * 首帧由 layout 里的内联脚本在 hydration 前写好 data-theme，不会 FOUC。
+ */
+:root {
+  --jcc-canvas: #f2f8fd;
+  --jcc-surface: #ffffff;
+  --jcc-raised: #eef5fb;
+  --jcc-hairline: #dbe7f2;
+
+  --jcc-ink: #14222f;
+  --jcc-ink-soft: #46586a;
+  --jcc-ink-faint: #5f7285;
+
+  --jcc-brand: #7db8e8;
+  --jcc-brand-line: #3f83b5;
+  --jcc-brand-soft: #e2eff9;
+  --jcc-on-brand-soft: #1b4a6b;
+
+  --jcc-accent: #ffc93c;
+  --jcc-accent-soft: #fff3d1;
+  --jcc-on-accent: #3a2b00;
+
+  --jcc-offer-soft: #dff3e9;
+  --jcc-on-offer-soft: #166241;
+
+  --jcc-drop-soft: #fbe8e6;
+  --jcc-on-drop-soft: #8a352b;
+
+  /* 图表系列色。两种模式用同一对：已用色觉障碍分离度与明度带校验过，别换成品牌黄（太亮，读不出来）。 */
+  --jcc-chart-1: #3a7fb2;
+  --jcc-chart-2: #c77d0a;
+
+  --jcc-shadow-card: 0 1px 2px rgb(20 34 47 / 0.05), 0 6px 20px rgb(20 34 47 / 0.07);
+  --jcc-shadow-lifted: 0 8px 16px rgb(20 34 47 / 0.09), 0 20px 44px rgb(20 34 47 / 0.14);
+  --jcc-overlay: rgb(242 248 253 / 0.94);
+}
+
+[data-theme="dark"] {
+  --jcc-canvas: #0b1016;
+  --jcc-surface: #151d27;
+  --jcc-raised: #1e2833;
+  --jcc-hairline: #2b3742;
+
+  --jcc-ink: #e9f1f8;
+  --jcc-ink-soft: #b3c3d2;
+  --jcc-ink-faint: #96a8b9;
+
+  --jcc-brand: #7db8e8;
+  --jcc-brand-line: #6aa8dc;
+  --jcc-brand-soft: #1b2a3a;
+  --jcc-on-brand-soft: #a9cff0;
+
+  --jcc-accent: #ffc93c;
+  --jcc-accent-soft: #3a2d05;
+  --jcc-on-accent: #241a00;
+
+  --jcc-offer-soft: #102c1e;
+  --jcc-on-offer-soft: #74d5a5;
+
+  --jcc-drop-soft: #331b19;
+  --jcc-on-drop-soft: #f0a89e;
+
+  --jcc-shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+  --jcc-shadow-lifted: 0 8px 16px rgb(0 0 0 / 0.5), 0 20px 44px rgb(0 0 0 / 0.6);
+  --jcc-overlay: rgb(11 16 22 / 0.95);
+}
+
+@theme inline {
+  --color-canvas: var(--jcc-canvas);
+  --color-surface: var(--jcc-surface);
+  --color-raised: var(--jcc-raised);
+  --color-hairline: var(--jcc-hairline);
+
+  --color-ink: var(--jcc-ink);
+  --color-ink-soft: var(--jcc-ink-soft);
+  --color-ink-faint: var(--jcc-ink-faint);
+
+  --color-brand: var(--jcc-brand);
+  --color-brand-line: var(--jcc-brand-line);
+  --color-brand-soft: var(--jcc-brand-soft);
+  --color-on-brand-soft: var(--jcc-on-brand-soft);
+
+  --color-accent: var(--jcc-accent);
+  --color-accent-soft: var(--jcc-accent-soft);
+  --color-on-accent: var(--jcc-on-accent);
+
+  --color-offer-soft: var(--jcc-offer-soft);
+  --color-on-offer-soft: var(--jcc-on-offer-soft);
+
+  --color-drop-soft: var(--jcc-drop-soft);
+  --color-on-drop-soft: var(--jcc-on-drop-soft);
+
+  --color-chart-1: var(--jcc-chart-1);
+  --color-chart-2: var(--jcc-chart-2);
+
+  --radius-card: 16px;
+
+  --shadow-card: var(--jcc-shadow-card);
+  --shadow-lifted: var(--jcc-shadow-lifted);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--jcc-canvas);
+  color: var(--jcc-ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 数字用等宽变体，秒数跳动时不会左右抖 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 主题切换时的平滑过渡。只在切换那一刻挂 .theme-switching，
+ * 常驻全局 transition 会拖慢 hover 反馈，也会让拖拽掉帧。
+ */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition:
+    background-color 260ms ease,
+    border-color 260ms ease,
+    color 260ms ease,
+    fill 260ms ease !important;
+}
+
+/* 文案模块的显隐由 html 上的属性驱动，避免 hydration 前后不一致 */
+[data-peptalk="off"] .peptalk-on,
+[data-peptalk="on"] .peptalk-off {
+  display: none;
+}
+[data-peptalk="off"] .peptalk-panel {
+  display: none;
+}
+
+/* 主题切换按钮的双图标同理：两个都渲染，靠属性决定显示哪个 */
+[data-theme="dark"] .theme-light-only,
+:root:not([data-theme="dark"]) .theme-dark-only {
+  display: none;
+}
+
+/* 尊重系统的「减少动态效果」：动效一律退化为瞬时切换，功能不减 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* 呼吸灯：4 秒一循环，模拟平稳呼吸 */
+@keyframes jcc-breathe {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.62;
+    transform: scale(1.06);
+  }
+}
+
+.breathing {
+  animation: jcc-breathe 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathing {
+    animation: none;
+    opacity: 0.42;
+  }
+}
+
+/* 键盘可见焦点环，别被 outline-none 抹掉 */
+:focus-visible {
+  outline: 2px solid var(--jcc-brand-line);
+  outline-offset: 2px;
+  border-radius: 8px;
+}

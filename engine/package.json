@@ -1,0 +1,19 @@
+{
+  "name": "tracker-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "求职追踪系统的核心逻辑层：公司名归一化、时间语义分类、去重合并、时区换算",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "check": "tsc --noEmit && vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

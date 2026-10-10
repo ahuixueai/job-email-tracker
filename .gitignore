@@ -1,0 +1,15 @@
+node_modules/
+.next/
+coverage/
+*.log
+.DS_Store
+.env
+.env.local
+.env*.local
+.vercel/
+
+# Never commit real mail or anything derived from it.
+eval/
+*.eml
+*predictions*.jsonl
+*truth*.jsonl

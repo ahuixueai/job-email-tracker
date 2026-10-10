@@ -1,0 +1,230 @@
+{
+  "model": "deepseek-v4-pro",
+  "recordedOn": "2026-10-09",
+  "extractions": {
+    "fixed-exam": {
+      "companyRaw": "星河科技",
+      "roleRaw": "商业分析师",
+      "locationRaw": null,
+      "timeText": "考试时间:{{EXAM_DAY}} 19:00-20:40（北京时间）",
+      "eventTypeHint": "assessment",
+      "notJobRelated": false
+    },
+    "relative-deadline": {
+      "companyRaw": "北辰咨询",
+      "roleRaw": "咨询顾问",
+      "locationRaw": "上海",
+      "timeText": "请在收到本邮件后 72 小时内完成在线测评",
+      "eventTypeHint": "assessment",
+      "notJobRelated": false
+    },
+    "issuance-trap": {
+      "companyRaw": "青禾消费",
+      "roleRaw": "管培生项目",
+      "locationRaw": "杭州",
+      "timeText": "请在 3 天内完成全部题目。",
+      "eventTypeHint": "assessment",
+      "notJobRelated": false
+    },
+    "english-hk": {
+      "companyRaw": "Aurora Pacific Bank",
+      "roleRaw": "Graduate Programme 2027",
+      "locationRaw": "Hong Kong",
+      "timeText": "Your video interview is scheduled for {{HK_DAY}} at 14:00 (HKT).",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "phone-interview": {
+      "companyRaw": "云帆物流（深圳）",
+      "roleRaw": "管理培训生",
+      "locationRaw": null,
+      "timeText": "{{PHONE_DAY}} 15:30（北京时间）",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "ai-interview": {
+      "companyRaw": "北辰咨询",
+      "roleRaw": "咨询顾问",
+      "locationRaw": null,
+      "timeText": "请于 {{AI_DAY}} 23:59（北京时间）前完成",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "us-assessment": {
+      "companyRaw": "Northwind Analytics",
+      "roleRaw": "Business Analyst",
+      "locationRaw": null,
+      "timeText": "by {{US_DUE_DAY}} at 11:59 PM ET",
+      "eventTypeHint": "assessment",
+      "notJobRelated": false
+    },
+    "us-phone-screen": {
+      "companyRaw": "Sierra Robotics",
+      "roleRaw": "Operations Associate",
+      "locationRaw": null,
+      "timeText": "on {{US_PHONE_DAY}} at 10:00 AM PT",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "us-rejection": {
+      "companyRaw": "Atlas Consulting",
+      "roleRaw": "Associate Consultant",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "result",
+      "notJobRelated": false
+    },
+    "no-timezone": {
+      "companyRaw": "Meridian Partners",
+      "roleRaw": "Analyst",
+      "locationRaw": null,
+      "timeText": "{{PLAIN_DAY}} at 10:00",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "reminder": {
+      "companyRaw": "星河科技",
+      "roleRaw": null,
+      "locationRaw": null,
+      "timeText": "{{EXAM_DAY}} 19:00（北京时间）开考",
+      "eventTypeHint": "reminder",
+      "notJobRelated": false
+    },
+    "application-ok": {
+      "companyRaw": "云帆物流",
+      "roleRaw": "2027 届管理培训生",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "noise": {
+      "companyRaw": null,
+      "roleRaw": null,
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "other",
+      "notJobRelated": true
+    },
+    "hist-xinghe-apply": {
+      "companyRaw": "星河科技",
+      "roleRaw": "商业分析师",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-beichen-apply": {
+      "companyRaw": "北辰咨询",
+      "roleRaw": "咨询顾问（上海）",
+      "locationRaw": "上海",
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-qinghe-apply": {
+      "companyRaw": "青禾消费",
+      "roleRaw": "管培生项目",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-yuanshan-apply": {
+      "companyRaw": "远山新能源",
+      "roleRaw": "海外市场专员",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-yuanshan-round2": {
+      "companyRaw": "远山新能源",
+      "roleRaw": "海外市场专员",
+      "locationRaw": null,
+      "timeText": "面试时间:{{ROUND2_DAY}} 14:00（北京时间）",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "hist-songjian-apply": {
+      "companyRaw": "松间科技",
+      "roleRaw": "产品运营",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-songjian-final": {
+      "companyRaw": "松间科技",
+      "roleRaw": "产品运营岗位",
+      "locationRaw": "上海市浦东新区松间科技总部 3 楼",
+      "timeText": "{{FINAL_DAY}} 10:00（北京时间）",
+      "eventTypeHint": "interview",
+      "notJobRelated": false
+    },
+    "hist-haianxian-apply": {
+      "companyRaw": "海岸线传媒",
+      "roleRaw": "内容策划",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-haianxian-offer": {
+      "companyRaw": "海岸线传媒",
+      "roleRaw": "内容策划岗位",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "result",
+      "notJobRelated": false
+    },
+    "hist-zhixing-apply": {
+      "companyRaw": "知行教育",
+      "roleRaw": "课程运营",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-zhixing-reject": {
+      "companyRaw": "知行教育",
+      "roleRaw": "课程运营岗位",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "result",
+      "notJobRelated": false
+    },
+    "hist-moshi-apply": {
+      "companyRaw": "墨石资本",
+      "roleRaw": "投资助理",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-moshi-update": {
+      "companyRaw": "墨石资本",
+      "roleRaw": null,
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "reminder",
+      "notJobRelated": false
+    },
+    "hist-lanwan-apply": {
+      "companyRaw": "澜湾医疗",
+      "roleRaw": "市场专员",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    },
+    "hist-qiyun-apply": {
+      "companyRaw": "栖云酒店集团",
+      "roleRaw": "管理培训生",
+      "locationRaw": null,
+      "timeText": null,
+      "eventTypeHint": "application_ok",
+      "notJobRelated": false
+    }
+  }
+}
