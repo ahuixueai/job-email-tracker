@@ -13,7 +13,7 @@ import { isVerificationNoise } from "./noise.js";
 export interface EventTypeSignals {
   subject: string;
   body: string;
-  /** 预留：暂未参与判定，未来可能用来微调置信度或辅助去重。 */
+  /** 发件域名。目前只用来认招聘网站的群发推荐（智联、前程无忧、猎聘）。 */
   senderDomain?: string;
 }
 
@@ -36,6 +36,11 @@ export interface EventTypeClassification {
   confidence: Confidence;
   /** 判定依据，便于人工复核。 */
   reason: string;
+  /**
+   * 规则**确定**这不是流程里的一步（问卷、宣讲会、招聘网站推荐…），不是「没认出来」。
+   * 管线据此不采纳模型的类型建议——否则模型一句「这是面试」，广告就带着「待确认」挤进你的收件箱。
+   */
+  final?: boolean;
 }
 
 /** actionable 完全由 eventType 决定，见方案对「行动项 vs 通知」的划分。 */
@@ -146,7 +151,31 @@ function looksLikeReminder(subject: string, body: string): boolean {
  * 「24 小时内完成问卷」这样的期限，于是会被判成一场有截止时间的面试摆上日程。
  * 它不是流程里的任何一步，填不填都不影响结果。只看标题，正文里顺带提到问卷的不算。
  */
-const SURVEY_SUBJECT = /满意度|体验(?:调查|调研|反馈问卷)|问卷调查|调研问卷|(?:satisfaction|experience)\s+survey/i;
+const SURVEY_SUBJECT = /满意度|体验(?:调查|调研|反馈问卷)|问卷调查|调研问卷|(?:雇主|品牌)[^，,。]{0,6}调研|(?:satisfaction|experience)\s+survey/i;
+
+/**
+ * 招聘方和招聘网站的**营销群发**：宣讲会、直播、双选会、「X 秋招开启」、岗位推荐、「邀您投递」。
+ *
+ * 它们满篇都是「面试」「笔试」「校招」「投递」，按词扫会被当成流程通知，模型也常跟着说「这是面试」；
+ * 但它们说的是「来投我们」，不是你已经在走的流程里的一步。真实收件里这类信
+ * 曾有 9 封进了待确认（宣讲会、平台推荐、调研、开放申请…）。
+ *
+ * 只看标题。分两档：
+ * - STRONG_PROMO（宣讲会、直播、专场、「等你加入」…）：活动本身就是广告，标题里顺带一句「拿 offer」「投递成功」也不算你的流程
+ *   （真实例子：「有机会现场拿offer！某矿业纽约专场即将开启！」「简历投递成功，应届生宝藏版块等你加入」）
+ * - PROMO_SUBJECT：标题里明写了属于你的那一步（「笔试通知」「面试邀请」「投递成功」）就不算——见 PERSONAL_STEP。
+ */
+const STRONG_PROMO = /【智联推荐】|宣讲会|空宣|空中宣讲|直播|双选会|招聘会|专场|开放日|等你加入|宝藏|雇主品牌/;
+
+const PROMO_SUBJECT =
+  /邀您投递|投递邀请|岗位推荐|职位推荐|(?:校招|校园招聘|秋招|春招|实习生?招聘|管培生?招聘)[^，,。！!]{0,8}(?:开启|启动|来啦|来袭|开放|开始|进行中)|opportunities\s+(?:are\s+)?(?:now\s+)?open|applications?\s+(?:are\s+)?(?:now\s+)?open|now\s+hiring|we(?:'re|\s+are)\s+hiring|join\s+our\s+team/i;
+
+/** 标题里明写了「你的」那一步：有这些就不是群发营销。 */
+const PERSONAL_STEP =
+  /(?:笔试|面试|测评|测试|评测)(?:通知|邀请|邀约|安排|提醒|结果)|投递成功|申请成功|提交成功|已收到(?:您|你)|诚邀你?进入|录用|offer\s+letter|很遗憾|未通过|不合适|感谢(?:您|你)的?(?:投递|应聘|申请)|your\s+(?:application|interview|assessment)|invitation\s+to\s+(?:interview|assessment)/i;
+
+/** 招聘网站的群发域名（不是企业 ATS）：它们发的几乎全是岗位推荐和活动广告。 */
+const JOB_BOARD_DOMAIN = /(?:^|\.)(?:wisdomore\.com|zhaopin\.(?:com|cn)|51job\.com|lietou-edm\.com|liepin\.com)$/i;
 
 /**
  * 标题点明「要你补材料」：更新应聘信息、完善网申登记表、填写应聘登记表。
@@ -187,7 +216,21 @@ export function classifyEventType(signals: EventTypeSignals): EventTypeClassific
   }
 
   if (SURVEY_SUBJECT.test(subject)) {
-    return withActionable("other", false, "low", "标题是满意度调查/问卷：不是流程里的一步");
+    return { ...withActionable("other", false, "low", "标题是满意度调查/问卷：不是流程里的一步"), final: true };
+  }
+
+  if (STRONG_PROMO.test(subject)) {
+    return { ...withActionable("other", false, "low", "标题是宣讲会 / 直播 / 专场 / 平台推荐这类活动广告：不是你流程里的一步"), final: true };
+  }
+
+  if (!PERSONAL_STEP.test(subject)) {
+    const domain = (signals.senderDomain ?? "").toLowerCase();
+    if (PROMO_SUBJECT.test(subject)) {
+      return { ...withActionable("other", false, "low", "标题是宣讲会 / 直播 / 开放申请 / 岗位推荐这类群发：不是你流程里的一步"), final: true };
+    }
+    if (domain.length > 0 && JOB_BOARD_DOMAIN.test(domain)) {
+      return { ...withActionable("other", false, "low", `发件方是招聘网站群发（${domain}），标题也没写你的哪一步`), final: true };
+    }
   }
 
   if (RESCHEDULE_MARK.test(full)) {

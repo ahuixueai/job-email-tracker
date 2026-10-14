@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 import type { Confidence, IanaTimeZone, UtcIsoString } from "./types";
 import {
   COMPANY_DOMAIN_REGIONS,
@@ -400,8 +400,19 @@ export function inferTimeZone(signals: TimeZoneSignals): TimeZoneInference {
     };
   }
 
-  // P4 台账里这家公司已有的地区
+  // P4 台账里这家公司已有的地区。
+  // 也接受一个 IANA 时区名（含「/」）：那是用户在看板上亲手确认过的「这家公司的时间按哪个时区」，
+  // 比地区名更准，直接用。它来自用户本人，不违反「不猜时区」。
   if (signals.knownCompanyRegion) {
+    const known = signals.knownCompanyRegion.trim();
+    if (known.includes("/") && isValidTimeZone(known)) {
+      return {
+        tz: known,
+        confidence: "medium",
+        source: "ledger",
+        reason: `你之前确认过这家公司的时间按 ${known}`,
+      };
+    }
     const fromLedger = regionToTimeZone(signals.knownCompanyRegion);
     if (fromLedger) {
       return {

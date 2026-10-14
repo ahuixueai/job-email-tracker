@@ -104,6 +104,47 @@ export interface ManualApplication {
   createdAtMs: number;
 }
 
+/**
+ * 一件事做完了没有。和 Decision 分开存：一件事可以既是「你确认后排进日程的」，又是「已经做完的」。
+ * - done：做完了
+ * - missed：没参加 / 没做（也算处理过，不再挂在「做了吗？」里）
+ */
+export interface Completion {
+  state: "done" | "missed";
+  /** 你点下去的时刻。 */
+  atMs: number;
+}
+
+/**
+ * 你在「编辑」里改过的一件事。没出现的字段 = 沿用系统的判断（以后引擎改进了，这部分会跟着变好）。
+ * 原邮件不可改——这里改的是看板上显示的结论。
+ */
+export interface ItemEdit {
+  company?: string;
+  role?: string;
+  kind?: KindId;
+  time?: ResolvedTime;
+  /** 你的备注：面试官、要准备的点……（AI 面试准备也写在这里，见 prep.ts） */
+  note?: string;
+  /** 备注里那段 AI 面试准备生成时的指纹：用来判断你后来改没改过它。 */
+  aiPrep?: string;
+}
+
+/** 事件备注的长度上限：要放得下一段 AI 面试准备加你自己写的。 */
+export const ITEM_NOTE_MAX = 8000;
+
+/** 你在投递表里改过的一行（状态和轮次仍存在 applicationPatches 里）。 */
+export interface RowEdit {
+  company?: string;
+  role?: string;
+  location?: string;
+  /** 下一步要做什么。 */
+  next?: string;
+  /** 跟进日期 `YYYY-MM-DD`；空串 = 你特意清掉了。 */
+  followUp?: string;
+  note?: string;
+}
+
 export interface UserEdits {
   version: 1;
   /** 键是这件事的稳定标识（它最早那封邮件的 id）。 */
@@ -112,6 +153,23 @@ export interface UserEdits {
   /** 键是投递表行的 key。 */
   applicationPatches: Readonly<Record<string, ApplicationPatch>>;
   manualApplications: readonly ManualApplication[];
+  /**
+   * 你确认过的「这家公司的时间按哪个时区」。键是引擎归一化后的公司名，值是 IANA 时区名。
+   * 收信程序处理这家公司以后的邮件时，会把它当作时区线索（引擎的「台账记录」那一级）。
+   */
+  companyZones: Readonly<Record<string, string>>;
+  /** 键和 decisions 一样是这件事的 id（手动日程是 `manual:<id>`）。 */
+  completions: Readonly<Record<string, Completion>>;
+  /** 键是日程上这件事的 id。 */
+  itemEdits: Readonly<Record<string, ItemEdit>>;
+  /** 键是投递表行的 key。 */
+  rowEdits: Readonly<Record<string, RowEdit>>;
+  /** 你让看板记住的改名：系统认出的公司名 → 你要它显示的名字。以后这家公司的信都按它显示。 */
+  companyNames: Readonly<Record<string, string>>;
+  /** 你标成「广告」的发件地址（小写）。看板上不再显示它们的信；收信程序收到也直接丢弃，不调模型。 */
+  blockedSenders: readonly string[];
+  /** 你删掉的邮件（进回收站）：邮件 id → 删除时刻。从这些信来的日程、投递一起消失；可以恢复。 */
+  deletedEmails: Readonly<Record<string, number>>;
 }
 
 export const EMPTY_EDITS: UserEdits = {
@@ -120,6 +178,13 @@ export const EMPTY_EDITS: UserEdits = {
   manualEvents: [],
   applicationPatches: {},
   manualApplications: [],
+  companyZones: {},
+  completions: {},
+  itemEdits: {},
+  rowEdits: {},
+  companyNames: {},
+  blockedSenders: [],
+  deletedEmails: {},
 };
 
 export const EDITS_STORAGE_KEY = "jcc.demo.edits.v1";
@@ -129,7 +194,14 @@ export function hasEdits(edits: UserEdits): boolean {
     Object.keys(edits.decisions).length > 0 ||
     edits.manualEvents.length > 0 ||
     Object.keys(edits.applicationPatches).length > 0 ||
-    edits.manualApplications.length > 0
+    edits.manualApplications.length > 0 ||
+    Object.keys(edits.companyZones).length > 0 ||
+    Object.keys(edits.completions).length > 0 ||
+    Object.keys(edits.itemEdits).length > 0 ||
+    Object.keys(edits.rowEdits).length > 0 ||
+    Object.keys(edits.companyNames).length > 0 ||
+    edits.blockedSenders.length > 0 ||
+    Object.keys(edits.deletedEmails).length > 0
   );
 }
 
@@ -176,6 +248,130 @@ export function removeManualApplication(edits: UserEdits, id: string): UserEdits
     applicationPatches: patches,
     manualApplications: edits.manualApplications.filter((a) => a.id !== id),
   };
+}
+
+/** 记住某家公司的时间按哪个时区。公司名为空时不记——记了也对不上任何邮件。 */
+export function rememberCompanyZone(edits: UserEdits, company: string, timeZone: string): UserEdits {
+  if (company.trim().length === 0 || !isTimeZone(timeZone)) return edits;
+  return { ...edits, companyZones: { ...edits.companyZones, [company]: timeZone } };
+}
+
+export function forgetCompanyZone(edits: UserEdits, company: string): UserEdits {
+  const rest = { ...edits.companyZones };
+  delete rest[company];
+  return { ...edits, companyZones: rest };
+}
+
+export function complete(edits: UserEdits, key: string, state: Completion["state"], atMs: number): UserEdits {
+  return { ...edits, completions: { ...edits.completions, [key]: { state, atMs } } };
+}
+
+export function uncomplete(edits: UserEdits, key: string): UserEdits {
+  const rest = { ...edits.completions };
+  delete rest[key];
+  return { ...edits, completions: rest };
+}
+
+/** 改一件事：新改的字段叠在之前改过的上面。 */
+export function editItem(edits: UserEdits, key: string, change: ItemEdit): UserEdits {
+  const merged: ItemEdit = { ...edits.itemEdits[key], ...change };
+  return { ...edits, itemEdits: { ...edits.itemEdits, [key]: merged } };
+}
+
+/** 把一件事的修改整个换成给定的那份（undefined = 去掉）。撤销用。 */
+export function replaceItemEdit(edits: UserEdits, key: string, edit: ItemEdit | undefined): UserEdits {
+  const rest = { ...edits.itemEdits };
+  if (edit === undefined) delete rest[key];
+  else rest[key] = edit;
+  return { ...edits, itemEdits: rest };
+}
+
+/** 恢复系统判断：去掉你对这件事的全部修改。 */
+export function clearItemEdit(edits: UserEdits, key: string): UserEdits {
+  const rest = { ...edits.itemEdits };
+  delete rest[key];
+  return { ...edits, itemEdits: rest };
+}
+
+export function editRow(edits: UserEdits, key: string, change: RowEdit): UserEdits {
+  const merged: RowEdit = { ...edits.rowEdits[key], ...change };
+  return { ...edits, rowEdits: { ...edits.rowEdits, [key]: merged } };
+}
+
+/** 投递表一行恢复成系统推断的：状态和其他修改一起去掉。 */
+export function clearRow(edits: UserEdits, key: string): UserEdits {
+  const rows = { ...edits.rowEdits };
+  delete rows[key];
+  const patches = { ...edits.applicationPatches };
+  delete patches[key];
+  return { ...edits, rowEdits: rows, applicationPatches: patches };
+}
+
+/** 记住改名。原名或新名为空、或者两者一样时不记。 */
+export function rememberCompanyName(edits: UserEdits, from: string, to: string): UserEdits {
+  const a = from.trim();
+  const b = to.trim();
+  if (a.length === 0 || b.length === 0 || a === b) return edits;
+  return { ...edits, companyNames: { ...edits.companyNames, [a]: b } };
+}
+
+export function forgetCompanyName(edits: UserEdits, from: string): UserEdits {
+  const rest = { ...edits.companyNames };
+  delete rest[from];
+  return { ...edits, companyNames: rest };
+}
+
+/** 「智联招聘 <campus@mailf.wisdomore.com>」→「campus@mailf.wisdomore.com」。认不出地址时返回空串。 */
+export function senderAddress(from: string): string {
+  const angled = /<([^<>\s]+@[^<>\s]+)>/.exec(from);
+  const plain = /([^\s<>"]+@[^\s<>"]+)/.exec(from);
+  return (angled?.[1] ?? plain?.[1] ?? "").toLowerCase();
+}
+
+/** 删除邮件（进回收站）。 */
+export function trashEmails(edits: UserEdits, ids: readonly string[], atMs: number): UserEdits {
+  const next = { ...edits.deletedEmails };
+  for (const id of ids) next[id] = atMs;
+  return { ...edits, deletedEmails: next };
+}
+
+/** 从回收站恢复，或彻底删除后清掉记录。 */
+export function untrashEmails(edits: UserEdits, ids: readonly string[]): UserEdits {
+  const next = { ...edits.deletedEmails };
+  for (const id of ids) delete next[id];
+  return { ...edits, deletedEmails: next };
+}
+
+export function blockSender(edits: UserEdits, address: string): UserEdits {
+  const a = address.trim().toLowerCase();
+  if (a.length === 0 || edits.blockedSenders.includes(a)) return edits;
+  return { ...edits, blockedSenders: [...edits.blockedSenders, a] };
+}
+
+export function unblockSender(edits: UserEdits, address: string): UserEdits {
+  const a = address.trim().toLowerCase();
+  return { ...edits, blockedSenders: edits.blockedSenders.filter((s) => s !== a) };
+}
+
+/** 一处修改里改了哪些东西（详情里告诉你）。 */
+export const ITEM_EDIT_LABEL: Readonly<Record<keyof ItemEdit, string>> = {
+  company: "公司",
+  role: "岗位",
+  kind: "类型",
+  time: "时间",
+  note: "备注",
+  aiPrep: "AI 面试准备",
+};
+
+/** 是不是一个运行时认得的 IANA 时区名（必须带「/」，挡掉 "UTC" 以外的缩写）。 */
+export function isTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || !value.includes("/")) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------- 时间换算 ----------
@@ -306,5 +502,90 @@ export function parseEdits(value: unknown): UserEdits {
     }
   }
 
-  return { version: 1, decisions, manualEvents, applicationPatches, manualApplications };
+  const companyZones: Record<string, string> = {};
+  if (isRecord(value.companyZones)) {
+    for (const [company, zone] of Object.entries(value.companyZones)) {
+      if (company.trim().length > 0 && isTimeZone(zone)) companyZones[company] = zone;
+    }
+  }
+
+  const completions: Record<string, Completion> = {};
+  if (isRecord(value.completions)) {
+    for (const [key, raw] of Object.entries(value.completions)) {
+      if (isRecord(raw) && (raw.state === "done" || raw.state === "missed")) {
+        completions[key] = { state: raw.state, atMs: typeof raw.atMs === "number" ? raw.atMs : 0 };
+      }
+    }
+  }
+
+  const text = (v: unknown): string | undefined => (typeof v === "string" ? v.slice(0, 2000) : undefined);
+  const itemEdits: Record<string, ItemEdit> = {};
+  if (isRecord(value.itemEdits)) {
+    for (const [key, raw] of Object.entries(value.itemEdits)) {
+      if (!isRecord(raw)) continue;
+      const edit: ItemEdit = {};
+      const company = text(raw.company);
+      const role = text(raw.role);
+      const note = typeof raw.note === "string" ? raw.note.slice(0, ITEM_NOTE_MAX) : undefined;
+      if (company !== undefined && company.trim().length > 0) edit.company = company;
+      if (role !== undefined) edit.role = role;
+      if (note !== undefined) edit.note = note;
+      if (typeof raw.aiPrep === "string" && /^[0-9a-f]{8}$/.test(raw.aiPrep)) edit.aiPrep = raw.aiPrep;
+      if (isKindId(raw.kind)) edit.kind = raw.kind;
+      const time = raw.time === undefined ? null : parseTime(raw.time);
+      if (time !== null) edit.time = time;
+      if (Object.keys(edit).length > 0) itemEdits[key] = edit;
+    }
+  }
+
+  const rowEdits: Record<string, RowEdit> = {};
+  if (isRecord(value.rowEdits)) {
+    for (const [key, raw] of Object.entries(value.rowEdits)) {
+      if (!isRecord(raw)) continue;
+      const edit: RowEdit = {};
+      for (const field of ["company", "role", "location", "next", "note"] as const) {
+        const v = text(raw[field]);
+        if (v !== undefined) edit[field] = v;
+      }
+      // 空串表示你特意清掉了跟进日期
+      if (typeof raw.followUp === "string" && /^(\d{4}-\d{2}-\d{2})?$/.test(raw.followUp)) edit.followUp = raw.followUp;
+      if (Object.keys(edit).length > 0) rowEdits[key] = edit;
+    }
+  }
+
+  const companyNames: Record<string, string> = {};
+  if (isRecord(value.companyNames)) {
+    for (const [from, to] of Object.entries(value.companyNames)) {
+      if (typeof to === "string" && to.trim().length > 0 && from.trim().length > 0) companyNames[from] = to;
+    }
+  }
+
+  const blockedSenders: string[] = [];
+  if (Array.isArray(value.blockedSenders)) {
+    for (const raw of value.blockedSenders as unknown[]) {
+      if (typeof raw === "string" && raw.includes("@") && !blockedSenders.includes(raw.toLowerCase())) blockedSenders.push(raw.toLowerCase());
+    }
+  }
+
+  const deletedEmails: Record<string, number> = {};
+  if (isRecord(value.deletedEmails)) {
+    for (const [id, at] of Object.entries(value.deletedEmails)) {
+      if (typeof at === "number" && Number.isFinite(at)) deletedEmails[id] = at;
+    }
+  }
+
+  return {
+    version: 1,
+    blockedSenders,
+    deletedEmails,
+    decisions,
+    manualEvents,
+    applicationPatches,
+    manualApplications,
+    companyZones,
+    completions,
+    itemEdits,
+    rowEdits,
+    companyNames,
+  };
 }

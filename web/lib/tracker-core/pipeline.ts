@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 import type { Confidence, ParsedEvent } from "./types";
 import { isConsistentDue } from "./types";
 import type { CleanEmail, RawEmail } from "./rawEmail";
@@ -132,6 +132,8 @@ function assemble(
   const useHint =
     ruleType.eventType === "other" &&
     ruleType.confidence === "low" &&
+    // 规则确定是问卷 / 宣讲会 / 招聘网站推荐时，不给模型「把它捞回来」的口子
+    ruleType.final !== true &&
     extraction.eventTypeHint !== null &&
     extraction.eventTypeHint !== "other";
 

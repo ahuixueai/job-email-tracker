@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 /**
  * 常见公司的别名种子表（公开信息整理），由脚本生成，不要手改。
  *

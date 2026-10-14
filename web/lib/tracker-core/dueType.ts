@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 import type { Confidence, DueType, IanaTimeZone, UtcIsoString } from "./types";
 import {
   findExplicitTimeZone,
@@ -32,6 +32,11 @@ export interface DueClassification {
   reason: string;
   /** 正文里显式写明的时区（如 EST / SGT / 北京时间），没有则为 null。 */
   explicitTimeZone: IanaTimeZone | null;
+  /**
+   * 找到了日期与钟点、却因为时区未知没能换算时，信里写的那个**墙上时间**（`YYYY-MM-DDTHH:mm`）
+   * 和它的性质。只给人工确认时预填用——它不是 UTC，不能当成时刻参与任何计算。
+   */
+  unzoned?: { local: string; kind: "fixed_start" | "deadline" };
 }
 
 /**
@@ -362,7 +367,18 @@ export function classifyDue(
   let deferredPastFixed: (typeof usable)[number] | null = null;
 
   if (usable.length > 0) {
-    if (!zoneOk) return degrade("找到了日期与钟点，但时区未知，无法换算成 UTC");
+    if (!zoneOk) {
+      // 没有时区就无法比较先后（「未来的场次」都判断不了），只按出现顺序挑：场次优先于期限
+      const hint = usable.find((p) => p.kind === "fixed") ?? usable.find((p) => p.kind === "deadline") ?? usable[0]!;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return {
+        ...degrade("找到了日期与钟点，但时区未知，无法换算成 UTC"),
+        unzoned: {
+          local: `${hint.date.year}-${pad(hint.date.month)}-${pad(hint.date.day)}T${pad(hint.time.hour)}:${pad(hint.time.minute)}`,
+          kind: hint.kind === "deadline" ? "deadline" : "fixed_start",
+        },
+      };
+    }
 
     const momentOf = (p: (typeof usable)[number]): number =>
       Date.parse(toUtc(p.date, p.time.hour, p.time.minute));

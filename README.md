@@ -57,14 +57,15 @@ Two properties follow from this split:
 
 Measured on 147 of my own recruiting emails (92 process emails, 50 job ads, 5 unrelated). Full method and caveats: [docs/EVALUATION.md](./docs/EVALUATION.md).
 
-| | Rules only | Rules + model, first run | Rules + model, after fixes |
-|---|---|---|---|
-| **Precision** — items on the schedule that are fully correct (target > 95%) | 73.8% | 75.0% | **98.5%** |
-| **Recall** — process emails that land on the schedule fully correct (target > 70%) | 33.7% | 55.4% | **72.8%** |
-| Ads / unrelated email wrongly put on the schedule (of 55) | 3 | 8 | 1 |
-| Company name correct (of 92) | 59.8% | 98.9% | 98.9% |
+| | Rules only | Rules + model, first run | Rules + model, after fixes | + promotional filter |
+|---|---|---|---|---|
+| **Precision** — items on the schedule that are fully correct (target > 95%) | 73.8% | 75.0% | 98.5% | **100%** (67 / 67) |
+| **Recall** — process emails that land on the schedule fully correct (target > 70%) | 33.7% | 55.4% | 72.8% | **72.8%** |
+| Ads / unrelated email wrongly put on the schedule (of 55) | 3 | 8 | 1 | **0** |
+| Ads / unrelated email sent to "needs confirmation" (of 55) | 14 | 13 | 11 | **2** |
+| Company name correct (of 92) | 59.8% | 98.9% | 98.9% | 98.9% |
 
-**Read this honestly:** the "after fixes" column is measured on the *same* 147 emails the fixes were written against, so it is optimistic. A fresh, unseen batch has not been scored yet. The first-run column is the uncontaminated number.
+**Read this honestly:** the last two columns are measured on the *same* 147 emails the fixes were written against, so they are optimistic. A fresh, unseen batch has not been scored yet. The first-run column is the uncontaminated number. The promotional filter also has a cost: 2 process emails that used to wait in "needs confirmation" are now folded away as promotional (see [docs/EVALUATION.md](./docs/EVALUATION.md)).
 
 The first run is the interesting part: adding the model fixed company names almost completely (60% → 99%) but barely moved precision, because items that had been held back for "no company name" were now released onto the schedule *along with their other errors*. That is what led to the "veto, no vote" rule above.
 
@@ -72,20 +73,24 @@ The first run is the interesting part: adding the model fixed company names almo
 
 | View | What it is |
 |---|---|
-| Schedule | One card per event: company, role, time in *your* time zone. Add, remove, delete. |
+| Today | The next thing to do with a countdown, what is due in 48 hours, and what needs a follow-up. |
+| Schedule | One card per event: company, role, time in *your* time zone, the assessment link / meeting ID on the card. Mark done; past items you have not marked are asked about ("did you do it?") instead of being assumed done. |
 | Calendar | The same items on a month grid, placed by the viewer's local date. |
-| Needs confirmation | Items the system would not guess on, each with a plain-language reason and three choices: schedule it, record it only, ignore it. |
-| Applications | One row per company; status (applied → assessment → interview round → offer / rejected) inferred from the emails, manually overridable. |
+| Needs confirmation | Items the system would not guess on, each with a plain-language reason: schedule it, record it only, ignore it, or mark the sender as an ad. Bulk select. |
+| Applications | One row per company; status inferred from the emails (receipts and results count here and nowhere else), editable. Bulk "followed up, check again in 7 days". Cards instead of a table on phones. |
 | Stats | Funnel, status breakdown, the next two weeks, weekly volume, and how much the system handled without help. |
-| Emails | Every email, including the ones that were ignored and why. |
+| Emails | Every email, newest first: relevant ones on top, ignored ones (ads, codes) folded below with the reason, deleted ones in a restorable trash. |
+| Settings | What the board has learned from you (blocked senders, renamed companies, confirmed time zones), each removable; clear all changes. |
+
+Across all views: edit any item (the original email is never changed), undo the last step (button or Ctrl/Cmd+Z), search, and confirm twice before anything irreversible.
 
 The demo ships 28 synthetic emails. Thirteen are each built to exercise one specific failure mode (a fixed exam slot, a relative "within 72 hours" deadline, an "effective at" trap, an English email for an event in Hong Kong, an invite with no time zone, a reminder that must merge, and so on); the other fifteen are three weeks of ordinary history (receipts, a second-round and a final interview, an offer, rejections) so the applications table and the stats have something to show. Model output for these samples was recorded once and is replayed in the browser, so the public site makes no API calls.
 
 ## Repository layout
 
 ```
-engine/   Parsing engine. Pure TypeScript, zero runtime dependencies. 461 tests.
-web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 359 tests.
+engine/   Parsing engine. Pure TypeScript, zero runtime dependencies. 485 tests.
+web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 156 tests.
 docs/     Evaluation method and numbers.
 ```
 
@@ -97,14 +102,15 @@ Requires Node.js 20.9 or later (developed on Node 22).
 # engine
 cd engine
 npm ci
-npm test                 # 461 tests
+npm test                 # 485 tests
 npm run check            # type-check + tests with per-file coverage threshold
 
 # web
 cd web
 npm ci
 npm run dev              # http://localhost:3000
-npm test                 # 359 tests
+npm test                 # 156 tests
+npm run check            # types + lint + tests + production build
 ```
 
 To use a real model instead of the recorded output, any OpenAI-compatible chat endpoint works:
@@ -121,7 +127,7 @@ To score the engine on your own mailbox, see `engine/tools/eval-extract.ts` and 
 
 - **Not validated on unseen email yet.** See the note under the results table.
 - **No backend.** Manual edits in the demo live in the browser's local storage. Connecting a real mailbox and persisting state server-side is the next step.
-- **One promotional email still gets through** in the evaluation set: a campus-talk announcement that genuinely contains an on-site interview time. Both the rules and the model call it an interview.
+- **Promotional filtering is rule-based and in-sample.** Campus talks, live streams, job-board recommendations and "applications are open" mail are recognised from the subject line and folded; new marketing phrasings will slip through until a rule is added. The "mark as ad" button blocks a sender as a fallback.
 - **"Conditional future" mentions.** A receipt that says "you will be invited to an assessment within 24 hours" is still classified as an assessment by the rules. It is now caught by the model's veto and held for confirmation, but the rule itself is not fixed.
 - **Emails with no time-zone evidence** are held for confirmation by design, even when a human could guess the zone from the company.
 - Source comments are in Chinese and occasionally reference internal design notes that are not part of this repository.
@@ -129,6 +135,8 @@ To score the engine on your own mailbox, see `engine/tools/eval-extract.ts` and 
 ## What is not in this repository
 
 Real emails, the hand-labelled truth set, and the regression tests that replay real emails are kept private. This repository contains code, synthetic data, and aggregate evaluation numbers only.
+
+The same board component is also used by a private deployment that receives forwarded email (Cloudflare Email Routing → Worker → D1) and adds AI-assisted quick add and interview prep. That server side is not in this repository; some comments and the pure logic for those features (`web/lib/demo/quickAdd.ts`, `prep.ts`) refer to it, and the corresponding controls simply do not appear in the demo.
 
 ## How it was built
 

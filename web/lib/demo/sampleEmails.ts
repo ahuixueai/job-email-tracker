@@ -56,7 +56,7 @@ export function cnMonthDay(ms: number, timeZone = "Asia/Shanghai"): string {
 export function isoMinute(ms: number, timeZone = "Asia/Shanghai"): string {
   const p = partsIn(ms, timeZone);
   const hour = p.hour === "24" ? "00" : p.hour;
-  return `${p.year}-${p.month.padStart(2, "0")}-${p.day.padStart(2, "0")} ${hour}:${p.minute}`;
+  return `${p.year}-${(p.month ?? "").padStart(2, "0")}-${(p.day ?? "").padStart(2, "0")} ${hour}:${p.minute}`;
 }
 
 const EN_MONTHS = [

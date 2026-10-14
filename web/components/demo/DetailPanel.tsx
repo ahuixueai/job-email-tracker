@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, X } from "lucide-react";
-import { KindChip } from "@/components/demo/EventCard";
+import { Check, Copy, Pencil, RotateCcw, X } from "lucide-react";
+import { ActionButton, ConfirmButton, KindChip } from "@/components/demo/EventCard";
 import { highlightSegments } from "@/lib/demo/highlight";
 import type { Mark, MarkKind } from "@/lib/demo/highlight";
 import {
@@ -62,6 +62,51 @@ function Highlighted({ text, marks }: { text: string; marks: readonly Mark[] }) 
   );
 }
 
+export interface PrepControl {
+  /** 备注里已经有一段 AI 准备。 */
+  exists: boolean;
+  /** 那一段生成之后你改过。 */
+  edited: boolean;
+  busy: boolean;
+  error: string | null;
+  onGenerate: () => void;
+}
+
+/** 「AI 面试准备」：生成的内容写进上面的备注，这里只放按钮和说明。 */
+function PrepSection({ prep }: { prep: PrepControl }) {
+  return (
+    <Section title="AI 面试准备">
+      <div className="space-y-2 rounded-xl border border-hairline bg-surface p-4 text-sm" data-prep>
+        <p className="text-xs leading-relaxed text-ink-soft">
+          读这家公司发来的信（为主）和你在「设置」里上传的简历，写一份准备要点：岗位看重什么、可能被问的问题、你可以讲的经历、面试前要查的事。
+          写进这件事的备注，带「【AI 面试准备】」标题；重新生成只替换那一段，你自己写的不动。只有点按钮时才调用 AI。
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {prep.busy ? (
+            <span className="text-sm text-ink-soft" role="status">
+              生成中…（通常要半分钟左右）
+            </span>
+          ) : prep.exists && prep.edited ? (
+            <ConfirmButton onConfirm={prep.onGenerate} confirmText="确认：覆盖你改过的那段" action="prep-generate">
+              重新生成
+            </ConfirmButton>
+          ) : (
+            <ActionButton onClick={prep.onGenerate} action="prep-generate">
+              {prep.exists ? "重新生成" : "生成"}
+            </ActionButton>
+          )}
+          {prep.exists && prep.edited && !prep.busy ? <span className="text-xs text-ink-faint">你改过备注里 AI 写的那段，重新生成会覆盖它</span> : null}
+        </div>
+        {prep.error ? (
+          <p role="alert" className="text-xs text-on-drop-soft">
+            {prep.error}
+          </p>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 export interface DetailEmail {
   sample: SampleEmail;
   /** 这一封自己的解析结果，用于高亮它自己被摘出的片段。 */
@@ -78,6 +123,19 @@ export function DetailPanel({
   viewerTimeZone,
   extractorNote,
   userNote,
+  editedFields = [],
+  personalNote = null,
+  onEdit,
+  onRestore,
+  renamedFrom = null,
+  onForgetName,
+  sender = null,
+  onBlock,
+  blockedSender = null,
+  onUnblock,
+  onDeleteEmail,
+  onRestoreEmail,
+  prep,
   onClose,
 }: {
   result: DemoResult;
@@ -86,6 +144,30 @@ export function DetailPanel({
   extractorNote: string;
   /** 这条结论里有用户手动的部分时，说明是哪一部分。 */
   userNote?: string;
+  /** 你在「编辑」里改过的字段。 */
+  editedFields?: readonly string[];
+  /** 你写的备注。 */
+  personalNote?: string | null;
+  /** 有它才显示「编辑」按钮（只有日程上的事能编辑，单封邮件不能）。 */
+  onEdit?: () => void;
+  /** 恢复系统判断：去掉你改过的全部字段和备注。 */
+  onRestore?: () => void;
+  /** 这家公司是按你记住的名字显示的：系统原来认出的名字。 */
+  renamedFrom?: string | null;
+  /** 不再改名：以后按系统认出的名字显示。 */
+  onForgetName?: () => void;
+  /** 这封信的发件地址（可以标成广告时给）。 */
+  sender?: string | null;
+  onBlock?: () => void;
+  /** 已经被你标成广告的发件地址。 */
+  blockedSender?: string | null;
+  onUnblock?: () => void;
+  /** 删除这封信（进回收站）。只在从「邮件」打开单封信时有。 */
+  onDeleteEmail?: () => void;
+  /** 这封信在回收站里：恢复。 */
+  onRestoreEmail?: () => void;
+  /** AI 面试准备（只有私人看板、只对面试 / 笔试 / 测评）。 */
+  prep?: PrepControl;
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -134,6 +216,38 @@ export function DetailPanel({
               </>
             )}
           </div>
+          {onDeleteEmail ? (
+            <button type="button" onClick={onDeleteEmail} data-action="delete-email" className="rounded-lg border border-hairline px-3 py-1.5 text-xs text-ink-soft hover:bg-raised">
+              删除
+            </button>
+          ) : null}
+          {onRestoreEmail ? (
+            <button type="button" onClick={onRestoreEmail} data-action="restore-email" className="rounded-lg border border-hairline px-3 py-1.5 text-xs text-ink-soft hover:bg-raised">
+              从回收站恢复
+            </button>
+          ) : null}
+          {onBlock && sender ? (
+            <button
+              type="button"
+              onClick={onBlock}
+              data-action="block-sender"
+              title={`以后 ${sender} 的信都不再显示`}
+              className="rounded-lg border border-hairline px-3 py-1.5 text-xs text-ink-soft hover:bg-raised"
+            >
+              这是广告
+            </button>
+          ) : null}
+          {onEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              data-action="edit-item"
+              className="inline-flex items-center gap-1 rounded-lg bg-brand-soft px-3 py-1.5 text-xs font-semibold text-on-brand-soft hover:opacity-85"
+            >
+              <Pencil size={13} aria-hidden />
+              编辑
+            </button>
+          ) : null}
           <button
             ref={closeRef}
             type="button"
@@ -146,6 +260,62 @@ export function DetailPanel({
         </div>
 
         <div className="space-y-6 px-5 py-5">
+          {editedFields.length > 0 || (personalNote !== null && onRestore) ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm" data-edited>
+              <span className="text-ink">
+                {editedFields.length > 0 ? `你改过：${editedFields.join("、")}。` : "你加了备注。"}
+                <span className="text-ink-soft"> 下面的原邮件和「系统怎么判断的」仍是系统原来的结论。</span>
+              </span>
+              {onRestore ? (
+                <button
+                  type="button"
+                  onClick={onRestore}
+                  data-action="restore-item"
+                  className="inline-flex items-center gap-1 rounded-lg border border-hairline px-2.5 py-1 text-xs text-ink-soft hover:bg-raised"
+                >
+                  <RotateCcw size={12} aria-hidden />
+                  恢复系统判断
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {blockedSender !== null ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm" data-blocked>
+              <span className="text-ink-soft">
+                你把 <span className="text-ink">{blockedSender}</span> 标成了广告，这个发件人的信都不再显示。
+              </span>
+              {onUnblock ? (
+                <button type="button" onClick={onUnblock} data-action="unblock-sender" className="rounded-lg border border-hairline px-2.5 py-1 text-xs text-ink-soft hover:bg-raised">
+                  取消屏蔽
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {renamedFrom !== null ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hairline bg-surface px-4 py-3 text-sm" data-renamed>
+              <span className="text-ink-soft">
+                公司名按你记住的显示；系统认出的是「<span className="text-ink">{renamedFrom}</span>」。这家公司的所有信都这样显示。
+              </span>
+              {onForgetName ? (
+                <button
+                  type="button"
+                  onClick={onForgetName}
+                  data-action="forget-name"
+                  className="rounded-lg border border-hairline px-2.5 py-1 text-xs text-ink-soft hover:bg-raised"
+                >
+                  不再改名
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {personalNote !== null ? (
+            <Section title="你的备注">
+              <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm leading-relaxed break-words whitespace-pre-wrap text-ink" data-personal-note>
+                {personalNote}
+              </p>
+            </Section>
+          ) : null}
+          {prep ? <PrepSection prep={prep} /> : null}
           {userNote ? (
             <p className="rounded-xl bg-brand-soft px-4 py-3 text-sm leading-relaxed text-on-brand-soft" data-user-note>
               {userNote}

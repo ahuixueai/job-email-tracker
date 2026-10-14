@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { AddButton, RemoveButton } from "@/components/demo/AgendaView";
+import { AddButton, CompleteButton, RemoveButton } from "@/components/demo/AgendaView";
 import type { AgendaActions } from "@/components/demo/AgendaView";
-import { EventCard } from "@/components/demo/EventCard";
+import { ActionButton, EventCard } from "@/components/demo/EventCard";
 import { buildMonth, dateKeyIn, groupByDate, shiftMonth } from "@/lib/demo/agenda";
 import type { AgendaItem } from "@/lib/demo/agenda";
 import { zoneLabel } from "@/lib/demo/parseDemo";
@@ -104,12 +104,17 @@ export function CalendarView({
                   <span
                     key={item.key}
                     className={`mt-1 block h-1.5 rounded-full sm:mt-0.5 sm:h-auto sm:truncate sm:rounded sm:px-1 sm:text-[11px] sm:leading-5 ${
-                      item.result.dueType === "fixed_start"
-                        ? "bg-accent text-on-accent"
-                        : "bg-offer-soft text-on-offer-soft"
+                      item.completion !== null
+                        ? "bg-hairline text-ink-faint sm:line-through"
+                        : item.result.dueType === "fixed_start"
+                          ? "bg-accent text-on-accent"
+                          : "bg-offer-soft text-on-offer-soft"
                     }`}
                   >
-                    <span className="hidden sm:inline">{item.result.kindLabel}</span>
+                    <span className="hidden sm:inline">
+                      {item.completion?.state === "done" ? "✓ " : ""}
+                      {item.result.kindLabel}
+                    </span>
                   </span>
                 ))}
                 {events.length > 2 ? (
@@ -124,6 +129,7 @@ export function CalendarView({
         <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
           <span className="rounded bg-accent px-1.5 text-on-accent">准点开始</span>
           <span className="rounded bg-offer-soft px-1.5 text-on-offer-soft">截止前完成</span>
+          <span className="rounded bg-hairline px-1.5 text-ink-faint line-through">已完成</span>
           <span>日期按{zoneLabel(viewerTimeZone)}显示；待确认的事不画在日历上。</span>
         </p>
       </div>
@@ -142,8 +148,21 @@ export function CalendarView({
               result={item.result}
               viewerTimeZone={viewerTimeZone}
               pending={false}
+              showAccess
+              done={item.completion?.state ?? null}
               onDetail={() => actions.onDetail(item)}
-              actions={<RemoveButton item={item} onRemove={actions.onRemove} />}
+              actions={
+                item.completion ? (
+                  <ActionButton onClick={() => actions.onUncomplete(item)} action="uncomplete">
+                    撤销完成
+                  </ActionButton>
+                ) : (
+                  <>
+                    <CompleteButton item={item} onComplete={actions.onComplete} />
+                    <RemoveButton item={item} onRemove={actions.onRemove} />
+                  </>
+                )
+              }
             />
           ))
         )}

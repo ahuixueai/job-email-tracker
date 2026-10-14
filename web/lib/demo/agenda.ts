@@ -1,7 +1,7 @@
 import { describeWhen, kindLabelOf } from "./parseDemo";
 import type { DemoResult } from "./parseDemo";
-import { kindChoice } from "./userEdits";
-import type { Decision, ManualEvent, ResolvedTime, UserEdits } from "./userEdits";
+import { ITEM_EDIT_LABEL, kindChoice } from "./userEdits";
+import type { Completion, Decision, ItemEdit, ManualEvent, ResolvedTime, UserEdits } from "./userEdits";
 
 /**
  * 日程与日历的视图模型：把逐封邮件的解析结果折叠成「一件事一条」。
@@ -40,6 +40,12 @@ export interface AgendaItem {
   origin: "email" | "manual";
   /** 用户对它做过的处理。没处理过为 null。 */
   decision: Decision | null;
+  /** 做完了没有。没标为 null。 */
+  completion: Completion | null;
+  /** 你的备注。没写为 null。 */
+  note: string | null;
+  /** 你在「编辑」里改过哪些字段（「公司」「时间」…）。没改过为空。 */
+  editedFields: readonly string[];
   /** 取这件事里最早出现的那封信的结论。 */
   result: DemoResult;
   /** 说的是这件事的所有邮件，按出现顺序。 */
@@ -63,6 +69,9 @@ export function buildAgenda(entries: readonly ParsedEntry[]): AgendaItem[] {
       place: placeOf(value.result),
       origin: "email",
       decision: null,
+      completion: null,
+      note: null,
+      editedFields: [],
       ...value,
     }),
   );
@@ -70,14 +79,16 @@ export function buildAgenda(entries: readonly ParsedEntry[]): AgendaItem[] {
 }
 
 /**
- * 回执和结果通知没有要你去做的事，不占日程的位置——它们记在投递表里。
+ * 回执和结果通知没有要你去做的事，不占日程、也不进待确认——它们只记在投递表里。
  * 日程上只放需要你在某个时候做点什么的事：测评、面试、补材料。
  */
 function placeOf(result: DemoResult): Place {
-  if (result.destination === "board") {
-    return result.eventType === "application_ok" || result.eventType === "result" ? "tracked" : "board";
+  if (result.destination === "board" || result.destination === "pending") {
+    // 投递回执、拒信 / 结果通知：系统拿得准拿不准都一样——没有要你做的事，只进投递表做统计（作者 10/13 定）。
+    // 147 封评测里被判成这两类的 26 封全是真回执 / 拒信，没有一封带要你去做的事。
+    if (result.eventType === "application_ok" || result.eventType === "result") return "tracked";
+    return result.destination === "board" ? "board" : "pending";
   }
-  if (result.destination === "pending") return "pending";
   return "ignored";
 }
 
@@ -120,6 +131,7 @@ function manualToItem(event: ManualEvent, viewerTimeZone: string): AgendaItem {
     dueType: "unknown",
     dueReason: "",
     when: null,
+    unzoned: null,
     timeZone: null,
     confidence: null,
     confidenceReasons: [],
@@ -135,6 +147,9 @@ function manualToItem(event: ManualEvent, viewerTimeZone: string): AgendaItem {
     place: "board",
     origin: "manual",
     decision: null,
+    completion: null,
+    note: null,
+    editedFields: [],
     result: withTime(base, event, viewerTimeZone),
     sources: [],
   };
@@ -173,7 +188,14 @@ export function applyEdits(
     return { ...item, place: "board", decision, result };
   });
   const manual = edits.manualEvents.map((event) => manualToItem(event, viewerTimeZone));
-  return sortByTime([...decided, ...manual]);
+  // 你在「编辑」里改的、做没做完，各叠一层：和「放进日程 / 移出」互不影响
+  const layered = [...decided, ...manual].map((item) => {
+    const edit = edits.itemEdits[item.id];
+    const edited = edit === undefined ? item : applyItemEdit(item, edit, viewerTimeZone);
+    const completion = edits.completions[item.id];
+    return completion === undefined ? edited : { ...edited, completion };
+  });
+  return sortByTime(layered);
 }
 
 /** 某个 UTC 时刻在指定时区是哪一天，`YYYY-MM-DD`。 */
@@ -261,4 +283,41 @@ export function buildMonth(year: number, month: number): CalendarMonth {
 export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
   const index = year * 12 + (month - 1) + delta;
   return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+}
+
+/** 把你在「编辑」里改的叠到一件事上。公司名只改显示用的那个——合并、时区记忆仍按系统认出的公司走。 */
+function applyItemEdit(item: AgendaItem, edit: ItemEdit, viewerTimeZone: string): AgendaItem {
+  let result = item.result;
+  if (edit.company !== undefined) result = { ...result, displayCompany: edit.company };
+  if (edit.role !== undefined) result = { ...result, role: edit.role.trim().length > 0 ? edit.role : null };
+  if (edit.kind !== undefined) {
+    const choice = kindChoice(edit.kind);
+    result = { ...result, eventType: choice.eventType, format: choice.format, kindLabel: kindLabelOf(choice.eventType, choice.format) };
+  }
+  if (edit.time !== undefined) result = withTime(result, edit.time, viewerTimeZone);
+  const editedFields = (Object.keys(edit) as (keyof ItemEdit)[])
+    .filter((field) => field !== "note" && field !== "aiPrep")
+    .map((field) => ITEM_EDIT_LABEL[field]);
+  const note = edit.note !== undefined && edit.note.trim().length > 0 ? edit.note : null;
+  return { ...item, result, note, editedFields };
+}
+
+/** 准点开始的事，过了开始时刻多久还算「正在进行」，之后才问你做了没有。 */
+const IN_PROGRESS_MS = 2 * 3_600_000;
+
+/**
+ * 日程上一件事现在处在哪个阶段。
+ * - active：还没到，或正在进行，或没有具体时间
+ * - overdue：时间已经过了，你还没说做没做——**不自动算完成**，可能是错过了
+ * - done：你标过「完成」或「没参加」
+ */
+export type Phase = "active" | "overdue" | "done";
+
+export function phaseOf(item: AgendaItem, nowMs: number): Phase {
+  if (item.completion !== null) return "done";
+  const utc = item.result.when?.utc;
+  if (utc === undefined) return "active";
+  const at = Date.parse(utc);
+  const grace = item.result.dueType === "deadline" ? 0 : IN_PROGRESS_MS;
+  return at + grace < nowMs ? "overdue" : "active";
 }

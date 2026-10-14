@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 /** 文本归一化与中文数字解析。 */
 
 const NAMED_ENTITIES: Readonly<Record<string, string>> = {

@@ -13,6 +13,7 @@ import { findRelativeDeadline } from "../src/relative.js";
 import { classifyEventType } from "../src/eventType.js";
 import { classifyEventFormat } from "../src/eventFormat.js";
 import { composeConfidence } from "../src/confidence.js";
+import { inferTimeZone } from "../src/timezone.js";
 import { route } from "../src/inbox.js";
 
 /**
@@ -326,7 +327,8 @@ describe("规则与模型意见不一致：模型只能否决，不能提名", (
 
   it("模型说这不是流程事件，且没有具体时刻 → 折叠为噪音", async () => {
     const out = await parseEmail(
-      mail({ subject: "名企秋招岗位推荐", body: "热招岗位：管培生，流程含笔试与面试，点击查看更多职位。" }),
+      // 标题故意不用「岗位推荐」这类词：那会被群发规则直接判掉，测不到「模型否决」这条路
+      mail({ subject: "秋季热招精选", body: "热招岗位：管培生，流程含笔试与面试，点击查看更多职位。" }),
       { extractor: fake({ companyRaw: "某招聘平台", eventTypeHint: "other" }) },
     );
     const p = parsed(out);
@@ -550,5 +552,82 @@ describe("模型说「这是催办」不算分歧", () => {
     expect(p.event.eventType).toBe("assessment");
     expect(p.trace.confidenceReasons.join("；")).not.toContain("不一致");
     expect(destinationOf(out)).toBe("board");
+  });
+});
+
+describe("从用户的确认里学到的公司时区", () => {
+  it("台账线索可以是一个 IANA 时区名", () => {
+    const r = inferTimeZone({ text: "笔试时间：2026-10-11 10:00", knownCompanyRegion: "Asia/Shanghai" });
+    expect(r.tz).toBe("Asia/Shanghai");
+    expect(r.source).toBe("ledger");
+    expect(r.reason).toContain("确认过");
+  });
+
+  it("不合法的时区名不认，退回地区名解析", () => {
+    expect(inferTimeZone({ text: "x", knownCompanyRegion: "Mars/Olympus" }).tz).toBeNull();
+    expect(inferTimeZone({ text: "x", knownCompanyRegion: "上海" }).tz).toBe("Asia/Shanghai");
+  });
+
+  it("信里写明的时区仍然优先于学到的", () => {
+    const r = inferTimeZone({ text: "面试时间 10:00（北京时间）", knownCompanyRegion: "America/New_York" });
+    expect(r.tz).toBe("Asia/Shanghai");
+    expect(r.source).toBe("explicit");
+  });
+
+  it("管线里用 lookupCompanyRegion 接上：没写时区的笔试通知能换算出时刻", async () => {
+    const out = parsed(
+      await parseEmail(
+        mail({ from: "HR <hr@yunfan.example>", subject: "【云帆招聘】笔试通知", body: "笔试时间：2026-10-11 10:00-2026-10-11 12:00" }),
+        { extractor: fake({ companyRaw: "云帆" }), lookupCompanyRegion: (c) => (c === "云帆" ? "Asia/Shanghai" : null) },
+      ),
+    );
+    expect(out.event.dueType).toBe("fixed_start");
+    expect(out.event.startUtc).toBe("2026-10-11T02:00:00.000Z");
+    expect(out.event.sourceTimeZone).toBe("Asia/Shanghai");
+  });
+});
+
+describe("招聘方和招聘网站的群发：规则直接判掉，不让模型捞回待确认（2026-10-13 真实收件）", () => {
+  const promo = (subject: string, from = "HR <hr@xinghe.example>", body = "欢迎投递简历，流程包括笔试、面试，岗位多多。") =>
+    parseEmail(mail({ subject, from, body }), { extractor: fake({ companyRaw: "星河科技", eventTypeHint: "interview" }) });
+
+  it.each([
+    "明川资本2027届秋招《空宣线下宣讲会邀请函》，期待与您不见不散",
+    "《定向邀请函-直播二维码已更新》星河科技 2027届空中宣讲会，今晚19:00",
+    "【云帆校招】今晚19:00，秋招冲刺岗位专场直播来袭！",
+    "2026星河校园雇主品牌调研邀您参加！",
+    "星河科技面试体验调研",
+    "2027 Early Careers opportunities open for applications",
+    "星河科技2027届校园招聘来啦！",
+    "尊敬的同学【智联推荐】星河 2027 管理培训生校招如约开启！",
+    "同学，你有1份会计双选会投递邀请，点击查看",
+    "某平台HRO海外业务部实习生招聘邀您投递！",
+    "有机会现场拿offer！某矿业纽约专场即将开启！",
+    "简历投递成功，应届生宝藏版块等你加入",
+  ])("「%s」→ 折叠，不进待确认", async (subject) => {
+    const out = await promo(subject);
+    const p = parsed(out);
+    expect(p.event.eventType).toBe("other");
+    expect(p.trace.usedEventTypeHint).toBe(false);
+    expect(destinationOf(out)).toBe("noise");
+  });
+
+  it("招聘网站发的群发，标题没写你的哪一步 → 折叠", async () => {
+    const out = await promo("瑞安房地产2027届管培项目", "某网站 <services@51job.com>");
+    expect(destinationOf(out)).toBe("noise");
+  });
+
+  it.each([
+    ["【北辰数据2027管培生招聘】简历投递成功提醒", "campus@quickmail.51job.com"],
+    ["启明金融2027届校招笔试邀约", "support@batchmail.nowcoder.net"],
+    ["【在线邀请】远山集团27届校园招聘-诚邀你进入人才测评环节", "hr@mail.hire.feishu.cn"],
+    ["星河科技校园招聘面试邀请 — 渠道经理", "people@xinghe.example"],
+    ["明川资本2027校园招聘线上测评邀请", "noreply-hire@mail.feishu.cn"],
+    ["云帆科技27校招市场管培笔试问卷说明", "hr@yunfan.example"],
+  ])("真通知不受影响：「%s」", async (subject, from) => {
+    const out = await parseEmail(mail({ subject, from: `HR <${from}>`, body: "请于10月20日 19:00（北京时间）参加。" }), {
+      extractor: fake({ companyRaw: "星河科技", eventTypeHint: null }),
+    });
+    expect(parsed(out).event.eventType).not.toBe("other");
   });
 });

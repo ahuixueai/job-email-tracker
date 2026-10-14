@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 /**
  * 行动信息：做这件事要用到的**入口链接**和**凭据**（测评密钥、考试码、会议号……）。
  *

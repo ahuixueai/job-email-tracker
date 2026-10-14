@@ -20,7 +20,7 @@ RawEmail → toCleanEmail → prefilter → LLMExtractor → parseEmail → Inbo
 
 ```bash
 npm ci
-npm test          # 461 tests
+npm test          # 485 tests
 npm run check     # tsc + tests + per-file line coverage >= 80%
 ```
 

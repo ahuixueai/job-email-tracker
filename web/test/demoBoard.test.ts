@@ -9,7 +9,7 @@ import {
   stageText,
 } from "@/lib/demo/applications";
 import type { ApplicationEmail, ApplicationRow } from "@/lib/demo/applications";
-import { pendingReason, runDemoParse, timeSummary } from "@/lib/demo/parseDemo";
+import { notParsedResult, pendingReason, runDemoParse, timeSummary, toDemoResult } from "@/lib/demo/parseDemo";
 import type { DemoResult } from "@/lib/demo/parseDemo";
 import { buildSampleEmails } from "@/lib/demo/sampleEmails";
 import { funnel, handling, kpis, stageDistribution, upcomingLoad, weeklyEmails } from "@/lib/demo/stats";
@@ -18,6 +18,9 @@ import {
   addManualEvent,
   decide,
   EMPTY_EDITS,
+  forgetCompanyZone,
+  isTimeZone,
+  rememberCompanyZone,
   hasEdits,
   kindChoice,
   kindIdOf,
@@ -32,7 +35,7 @@ import {
   utcToLocalInput,
 } from "@/lib/demo/userEdits";
 import type { UserEdits } from "@/lib/demo/userEdits";
-import { EMPTY_EXTRACTION } from "@/lib/tracker-core/index";
+import { EMPTY_EXTRACTION, parseEmail } from "@/lib/tracker-core/index";
 import type { LLMExtractor } from "@/lib/tracker-core/index";
 
 /**
@@ -115,6 +118,17 @@ describe("一件事摆在哪", () => {
     expect(itemOf(base, "application-ok").place).toBe("tracked");
     expect(itemOf(base, "us-rejection").place).toBe("tracked");
     expect(itemOf(base, "hist-haianxian-offer").place).toBe("tracked");
+  });
+
+  it("系统拿不准的回执 / 拒信也不进待确认：只记在投递表", () => {
+    const receipt = itemOf(base, "application-ok");
+    const rejection = itemOf(base, "us-rejection");
+    const unsure = buildAgenda([
+      { sampleId: "r1", subject: "感谢投递", result: { ...receipt.result, destination: "pending", dedupKey: "r1" } },
+      { sampleId: "r2", subject: "结果通知", result: { ...rejection.result, destination: "pending", dedupKey: "r2" } },
+      { sampleId: "r3", subject: "测评邀请", result: { ...itemOf(base, "fixed-exam").result, destination: "pending", dedupKey: "r3" } },
+    ]);
+    expect(Object.fromEntries(unsure.map((i) => [i.id, i.place]))).toEqual({ r1: "tracked", r2: "tracked", r3: "pending" });
   });
 
   it("测评、面试、补材料在日程上", () => {
@@ -529,5 +543,78 @@ describe("待确认卡片上的「为什么拿不准」", () => {
   it("对不上任何已知理由时不编，指向详情", () => {
     expect(pendingReason(withReasons(["一条以后才会出现的新理由"]))).toContain("详情");
     expect(pendingReason(withReasons([]))).toContain("详情");
+  });
+});
+
+describe("私人看板复用同一套翻译", () => {
+  it("收信程序存下的结论（JSON 往返一次）翻译出来和演示站现场解析的一模一样", async () => {
+    for (const id of ["fixed-exam", "no-timezone", "us-rejection", "noise", "hist-yuanshan-round2"]) {
+      const sample = samples.find((s) => s.id === id);
+      if (!sample) throw new Error(id);
+      const extractor = extractorFor(id);
+      const outcome = await parseEmail(sample.raw, { extractor: extractor ?? { extract: () => Promise.resolve({ ...EMPTY_EXTRACTION }) } });
+      const stored = JSON.parse(JSON.stringify(outcome));
+      const live = toDemoResult(stored, NY);
+      const demo = await runDemoParse(sample.raw, { viewerTimeZone: NY, ...(extractor ? { extractor } : { extractor: { extract: () => Promise.resolve({ ...EMPTY_EXTRACTION }) } }) });
+      expect(live, id).toEqual(demo);
+    }
+  });
+
+  it("没有解析结论的信：只出现在邮件列表，带上原因", () => {
+    const r = notParsedResult("你发出的邮件", "这是你自己写的回复");
+    expect(r.destination).toBe("dropped");
+    expect(r.dedupKey).toBeNull();
+    expect(r.trace[0]).toEqual({ label: "你发出的邮件", value: "忽略", reason: "这是你自己写的回复" });
+  });
+});
+
+describe("记住公司的时区", () => {
+  it("记住、覆盖、忘掉", () => {
+    let e = rememberCompanyZone(EMPTY_EDITS, "云帆科技", "Asia/Shanghai");
+    expect(e.companyZones).toEqual({ 云帆科技: "Asia/Shanghai" });
+    expect(hasEdits(e)).toBe(true);
+    e = rememberCompanyZone(e, "云帆科技", "America/New_York");
+    expect(e.companyZones["云帆科技"]).toBe("America/New_York");
+    e = forgetCompanyZone(e, "云帆科技");
+    expect(e.companyZones).toEqual({});
+    expect(hasEdits(e)).toBe(false);
+  });
+
+  it("公司名为空或时区不合法时不记", () => {
+    expect(rememberCompanyZone(EMPTY_EDITS, "  ", "Asia/Shanghai")).toBe(EMPTY_EDITS);
+    expect(rememberCompanyZone(EMPTY_EDITS, "云帆科技", "Beijing")).toBe(EMPTY_EDITS);
+    expect(rememberCompanyZone(EMPTY_EDITS, "云帆科技", "Mars/Olympus")).toBe(EMPTY_EDITS);
+  });
+
+  it("时区名校验", () => {
+    expect(isTimeZone("Asia/Shanghai")).toBe(true);
+    expect(isTimeZone("UTC")).toBe(false);
+    expect(isTimeZone(3)).toBe(false);
+  });
+
+  it("存取时坏的条目丢掉", () => {
+    const parsed = parseEdits({ version: 1, companyZones: { 云帆科技: "Asia/Shanghai", 坏: "Nope/Zone", "": "Asia/Tokyo", 数字: 5 } });
+    expect(parsed.companyZones).toEqual({ 云帆科技: "Asia/Shanghai" });
+    expect(parseEdits({ version: 1, companyZones: "x" }).companyZones).toEqual({});
+  });
+});
+
+describe("时区未知的场次：预填信里写的时间", () => {
+  it("找到了日期与钟点但不知道时区：不上日程，但留下墙上时间给你确认时用", async () => {
+    const result = await runDemoParse(
+      {
+        id: "u1",
+        from: "云帆科技招聘 <ehr@service.yunfan.example>",
+        to: "",
+        subject: "【云帆科技】笔试通知",
+        body: "同学你好，\n笔试时间：2026-10-21 10:00-2026-10-21 12:00\n请提前15分钟登录。",
+        receivedAtUtc: "2026-10-12T04:00:00.000Z",
+      },
+      { viewerTimeZone: "Asia/Shanghai" },
+    );
+    expect(result.destination).toBe("pending");
+    expect(result.when).toBeNull();
+    expect(result.unzoned).toEqual({ local: "2026-10-21T10:00", kind: "fixed_start" });
+    expect(notParsedResult("x", "y").unzoned).toBeNull();
   });
 });

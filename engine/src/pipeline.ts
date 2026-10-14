@@ -131,6 +131,8 @@ function assemble(
   const useHint =
     ruleType.eventType === "other" &&
     ruleType.confidence === "low" &&
+    // 规则确定是问卷 / 宣讲会 / 招聘网站推荐时，不给模型「把它捞回来」的口子
+    ruleType.final !== true &&
     extraction.eventTypeHint !== null &&
     extraction.eventTypeHint !== "other";
 

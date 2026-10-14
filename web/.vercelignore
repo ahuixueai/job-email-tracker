@@ -1,14 +1,6 @@
-# vercel 只上传「项目根目录」= job-command-center 本身。
-# 仓库外的东西（../ledger.db、../eval、../scripts）根本进不了构建产物，
-# 所以这里不需要、也不可能用 ../ 去排除它们——写了也是空话。
-# 真正的保障是：部署根目录选 job-command-center，而它里面没有任何真实数据。
-
+# Vercel 的项目根目录选 web/。这里面只有合成的演示数据，没有任何真实邮件。
 node_modules
 .next
-coverage
-e2e
 test
-docs
 *.log
-.env.local
 .env*.local

@@ -26,7 +26,7 @@ export interface Kpis {
 
 export function kpis(rows: readonly ApplicationRow[], agenda: readonly AgendaItem[], nowMs: number): Kpis {
   const inWeek = agenda.filter((item) => {
-    if (item.place !== "board" || item.result.when === null) return false;
+    if (item.place !== "board" || item.completion !== null || item.result.when === null) return false;
     const at = Date.parse(item.result.when.utc);
     return at > nowMs && at <= nowMs + 7 * DAY;
   });
@@ -133,7 +133,7 @@ export function upcomingLoad(
     byKey.set(dateKey, load);
   }
   for (const item of agenda) {
-    if (item.place !== "board" || item.result.when === null) continue;
+    if (item.place !== "board" || item.completion !== null || item.result.when === null) continue;
     if (Date.parse(item.result.when.utc) <= nowMs) continue;
     const load = byKey.get(dateKeyIn(item.result.when.utc, viewerTimeZone));
     if (!load) continue;

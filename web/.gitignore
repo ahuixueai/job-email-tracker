@@ -32,8 +32,6 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# 示例文件不含任何真实凭据，需要进仓库
-!.env.local.example
 
 # vercel
 .vercel

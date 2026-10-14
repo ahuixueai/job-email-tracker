@@ -1,4 +1,4 @@
-// 生成物：由 scripts/sync-tracker-core.mjs 从 tracker-core/src 同步而来，不要手改。
+// 生成物：由 scripts/sync-tracker-core.mjs 从 engine/src 同步而来，不要手改。
 import type { Confidence, EventType, ParsedEvent, StoredEvent, UtcIsoString } from "./types";
 import { buildDedupKey, dedupKeyOf, mergeEvent, toStoredEvent } from "./dedup";
 import { localDateIn } from "./timezone";

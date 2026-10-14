@@ -120,6 +120,16 @@ describe("C · date_only", () => {
     const r = classifyDue("考试时间 2026-08-15 10:00", RECEIVED, "Nowhere/Nothing");
     expect(r.dueType).toBe("date_only");
     expect(r.startUtc).toBeNull();
+    // 但信里写的墙上时间留着，给人工确认时预填——只差你选一个时区
+    expect(r.unzoned).toEqual({ local: "2026-08-15T10:00", kind: "fixed_start" });
+  });
+
+  it("时区未知：预填优先取场次，其次是期限；只有日期没有钟点就不预填", () => {
+    const both = classifyDue("请于8月18日 18:00前确认。考试时间：8月20日 9:30", RECEIVED, "");
+    expect(both.unzoned).toEqual({ local: "2026-08-20T09:30", kind: "fixed_start" });
+    const deadline = classifyDue("请于8月18日 18:00前提交材料", RECEIVED, "");
+    expect(deadline.unzoned).toEqual({ local: "2026-08-18T18:00", kind: "deadline" });
+    expect(classifyDue("测评将于 8月20日 开放", RECEIVED, "").unzoned).toBeUndefined();
   });
 
   it("时区未知时，绝对期限同样降级", () => {

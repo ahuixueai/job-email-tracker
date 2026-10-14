@@ -33,26 +33,28 @@ Model extractions were recorded once (DeepSeek `deepseek-v4-pro`, temperature 0,
 
 ## Results
 
-| | Rules only | Rules + model, first run | Rules + model, after fixes |
-|---|---|---|---|
-| Items placed on the schedule | 42 | 68 | 68 |
-| …of which fully correct | 31 | 51 | 67 |
-| **Precision** | 73.8% | 75.0% | **98.5%** |
-| **Recall** (of 92) | 33.7% | 55.4% | **72.8%** |
-| Promo / unrelated on the schedule (of 55) | 3 | 8 | 1 |
-| Process emails dropped by the prefilter | 1 | 1 | 0 |
+| | Rules only | Rules + model, first run | Rules + model, after fixes | + promotional filter |
+|---|---|---|---|---|
+| Items placed on the schedule | 42 | 68 | 68 | 67 |
+| …of which fully correct | 31 | 51 | 67 | 67 |
+| **Precision** | 73.8% | 75.0% | 98.5% | **100.0%** |
+| **Recall** (of 92) | 33.7% | 55.4% | 72.8% | **72.8%** |
+| Promo / unrelated on the schedule (of 55) | 3 | 8 | 1 | **0** |
+| Promo / unrelated in "needs confirmation" (of 55) | 14 | 13 | 11 | **2** |
+| Process emails folded as promotional (of 92) | — | — | 0 | 2 |
+| Process emails dropped by the prefilter | 1 | 1 | 0 | 0 |
 
 Field-level, process emails only (correct · wrong · no answer):
 
-| Field | Rules + model, first run | After fixes |
-|---|---|---|
-| Company (92) | 91 · 0 · 1 | 91 · 0 · 1 |
-| Event type (92) | 77 · 14 · 1 | 82 · 10 · 0 |
-| Time nature (89) | 75 · 8 · 6 | 84 · 3 · 2 |
-| Exact moment (42–43) | 35 · 3 · 4 | 41 · 0 · 2 |
-| Format (45–46) | 37 · 8 · 0 | 45 · 1 · 0 |
+| Field | Rules + model, first run | After fixes | + promotional filter |
+|---|---|---|---|
+| Company (92) | 91 · 0 · 1 | 91 · 0 · 1 | 91 · 0 · 1 |
+| Event type (92) | 77 · 14 · 1 | 82 · 10 · 0 | 84 · 8 · 0 |
+| Time nature (89) | 75 · 8 · 6 | 84 · 3 · 2 | 84 · 3 · 2 |
+| Exact moment (42–43) | 35 · 3 · 4 | 41 · 0 · 2 | 41 · 0 · 2 |
+| Format (45–46) | 37 · 8 · 0 | 45 · 1 · 0 | 45 · 1 · 0 |
 
-After the fixes, the 10 remaining event-type errors are all in "needs confirmation", not on the schedule.
+None of the remaining event-type errors is on the schedule; they wait in "needs confirmation" (or, for the 2 noted above, are folded).
 
 ## What the first run showed
 
@@ -69,11 +71,19 @@ After the fixes, the 10 remaining event-type errors are all in "needs confirmati
 - **Text cleaning.** HTML entities and zero-width characters are normalised before parsing.
 - Additional relative-deadline phrasings, receipt and rejection phrasings, and a field → subject → body priority for format detection.
 
+### Promotional filter (second round)
+
+In daily use, campus-talk invitations, live streams, employer-brand surveys, job-board recommendations and "applications are open" emails kept landing in "needs confirmation": the rules found no process step, but the model labelled them as interviews, and at that point a model suggestion alone was enough to ask the user.
+
+- The rules now recognise these from the **subject line** and mark the decision as **final**: the model's type suggestion is not consulted for them. Strong markers (campus talk, live stream, special session) fold the email even when the subject also says "offer" or "application received"; weaker ones ("applications open", "recommended jobs", mass mail from a job-board domain) only fold when the subject does *not* name a personal step ("interview invitation", "assessment notice", "application received"…).
+- Effect on the same 147 emails: promo / unrelated mail in "needs confirmation" 11 → 2, on the schedule 1 → 0, precision 98.5% → 100%, recall unchanged.
+- **Cost:** 2 process emails that previously waited in "needs confirmation" (neither was on the schedule) are now folded. Folded emails stay visible in the Emails view with the reason; they are not deleted.
+
 Every change is covered by a synthetic regression test (`engine/test/realEmailFixes.test.ts`) that keeps the sentence structure that caused the error and nothing else from the original email.
 
 ## Threats to validity
 
-- **The "after fixes" numbers are in-sample.** The fixes were written by studying errors on these 147 emails and then scored on the same 147. Expect lower numbers on unseen mail. A fresh batch has not been evaluated yet.
+- **The "after fixes" and "promotional filter" numbers are in-sample.** The fixes were written by studying errors on these 147 emails and then scored on the same 147. Expect lower numbers on unseen mail. A fresh batch has not been evaluated yet.
 - **One mailbox, one job seeker, one season.** Sender mix and phrasing are specific to this sample.
 - **Labels are not independently verified** (see above).
 - **One email has no recorded model output.** It was dropped by the prefilter in the recorded run, so in the replay it is parsed by rules alone and lands in "needs confirmation".

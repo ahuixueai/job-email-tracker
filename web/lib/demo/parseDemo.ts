@@ -7,6 +7,7 @@ import type {
   EventType,
   Extraction,
   LLMExtractor,
+  ParseOutcome,
   RawEmail,
 } from "../tracker-core/index";
 
@@ -145,6 +146,11 @@ export interface DemoResult {
   /** 引擎对时间语义给出的理由。 */
   dueReason: string;
   when: DemoWhen | null;
+  /**
+   * 信里写了日期和钟点、但时区未知没能换算时的墙上时间（`YYYY-MM-DDTHH:mm`）。
+   * 只用来在「放进日程」时预填，你选好时区就能确认；不参与任何排序或显示。
+   */
+  unzoned: { local: string; kind: "fixed_start" | "deadline" } | null;
   timeZone: string | null;
   confidence: Confidence | null;
   /** 降级原因。高置信时为空。 */
@@ -278,29 +284,43 @@ export interface DemoOptions {
 
 export async function runDemoParse(raw: RawEmail, options: DemoOptions): Promise<DemoResult> {
   const outcome = await parseEmail(raw, { extractor: options.extractor ?? new StubExtractor() });
+  return toDemoResult(outcome, options.viewerTimeZone);
+}
 
-  if (outcome.kind === "dropped") {
-    return {
-      destination: "dropped",
-      company: "",
-      displayCompany: "",
-      role: null,
-      eventType: null,
-      format: null,
-      kindLabel: "",
-      dueType: null,
-      dueReason: "",
-      when: null,
-      timeZone: null,
-      confidence: null,
-      confidenceReasons: [],
-      dedupKey: null,
-      extraction: null,
-      links: [],
-      credentials: [],
-      trace: [{ label: "第一道筛选", value: "忽略", reason: outcome.reason }],
-    };
-  }
+/**
+ * 一封没有解析结论的信（被忽略、你自己写的、处理出错）在看板上的样子。
+ * 它们只出现在「邮件」视图里，不进日程、不进投递表。
+ */
+export function notParsedResult(label: string, reason: string): DemoResult {
+  return {
+    destination: "dropped",
+    company: "",
+    displayCompany: "",
+    role: null,
+    eventType: null,
+    format: null,
+    kindLabel: "",
+    dueType: null,
+    dueReason: "",
+    when: null,
+    unzoned: null,
+    timeZone: null,
+    confidence: null,
+    confidenceReasons: [],
+    dedupKey: null,
+    extraction: null,
+    links: [],
+    credentials: [],
+    trace: [{ label, value: "忽略", reason }],
+  };
+}
+
+/**
+ * 引擎的解析结论 → 看板的视图模型。
+ * 演示站现场解析后调用它；私人看板拿收信程序存下的结论（JSON）调用它——两边是同一套翻译。
+ */
+export function toDemoResult(outcome: ParseOutcome, viewerTimeZone: string): DemoResult {
+  if (outcome.kind === "dropped") return notParsedResult("第一道筛选", outcome.reason);
 
   const { event, trace } = outcome;
   const routing = route(event.confidence, event.eventType, trace.confidenceReasons);
@@ -343,7 +363,8 @@ export async function runDemoParse(raw: RawEmail, options: DemoOptions): Promise
     when:
       event.startUtc === null
         ? null
-        : describeWhen(event.startUtc, event.sourceTimeZone, options.viewerTimeZone),
+        : describeWhen(event.startUtc, event.sourceTimeZone, viewerTimeZone),
+    unzoned: trace.due.unzoned ?? null,
     timeZone: event.sourceTimeZone,
     confidence: event.confidence,
     confidenceReasons: trace.confidenceReasons,
