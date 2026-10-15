@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "../../../web/app/theme.css";
+
+/* 看板组件放在网页项目里，Tailwind 要扫那边的源码才生成得出对应的样式 */
+@source "../../../web/components/demo";
+@source "../../../web/lib/demo";
+@source "./";

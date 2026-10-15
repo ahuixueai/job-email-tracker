@@ -17,6 +17,7 @@ import { StatsView } from "@/components/demo/StatsView";
 import { buildBoardData } from "@/lib/demo/view";
 import { SearchResults } from "@/components/demo/SearchResults";
 import { SettingsView } from "@/components/demo/SettingsView";
+import type { SettingsGroup } from "@/components/demo/SettingsView";
 import { isSearching } from "@/lib/demo/search";
 import { TodayView } from "@/components/demo/TodayView";
 import { dateKeyIn } from "@/lib/demo/agenda";
@@ -113,8 +114,10 @@ export interface BoardProps {
   blockable?: boolean;
   /** 彻底删除邮件（连原文从云端删掉）。只有私人看板有；演示站的回收站只能恢复。 */
   onPurgeEmails?: (sampleIds: readonly string[]) => Promise<void>;
-  /** 「设置」页最上面的私人看板专属部分（日历订阅、数据状态、退出登录）。 */
-  settingsExtra?: React.ReactNode;
+  /** 「设置」里私人看板专属的几组（日历与提醒、收信、AI 与简历），排在「数据与账号」前面。 */
+  settingsGroups?: readonly SettingsGroup[];
+  /** 「数据与账号」最下面的私人看板部分（退出登录）。 */
+  settingsAccount?: React.ReactNode;
   /** 收信可能出问题时的一句提醒（显示在「今天」）。 */
   healthWarning?: string | null;
   /** 「邮件」页顶上的教程（怎么把邮件发进来）。只有私人看板有。 */
@@ -144,7 +147,8 @@ export function Board({
   banner,
   blockable = false,
   onPurgeEmails,
-  settingsExtra,
+  settingsGroups,
+  settingsAccount,
   healthWarning = null,
   emailGuide,
   quickParse,
@@ -565,7 +569,8 @@ export function Board({
         {!searching && view === "settings" ? (
           <SettingsView
             edits={edits}
-            extra={settingsExtra}
+            {...(settingsGroups ? { groups: settingsGroups } : {})}
+            account={settingsAccount}
             actions={{
               onUnblock: (address) => act(`已取消屏蔽 ${address}`, (e) => unblockSender(e, address)),
               onForgetName: (from) => act("已取消改名", (e) => forgetCompanyName(e, from)),

@@ -86,11 +86,27 @@ Across all views: edit any item (the original email is never changed), undo the 
 
 The demo ships 28 synthetic emails. Thirteen are each built to exercise one specific failure mode (a fixed exam slot, a relative "within 72 hours" deadline, an "effective at" trap, an English email for an event in Hong Kong, an invite with no time zone, a reminder that must merge, and so on); the other fifteen are three weeks of ordinary history (receipts, a second-round and a final interview, an offer, rejections) so the applications table and the stats have something to show. Model output for these samples was recorded once and is replayed in the browser, so the public site makes no API calls.
 
+## The private board (`worker/`)
+
+The demo is the front end only. `worker/` is the server side I run for myself on Cloudflare (Workers + D1 + Email Routing), using the same engine and the same board component:
+
+| Feature | How |
+|---|---|
+| Real email in | Gmail forwards recruiting mail to `jobs@<your domain>`; the Worker accepts it only from allow-listed forwarders, parses it with the engine (rules + model) and stores the result in D1. Your own replies are archived, not parsed. |
+| Sign-in | Email one-time code (6 digits, 10 minutes, 5 attempts; per-email and per-IP rate limits; unknown addresses get the same answer so accounts cannot be enumerated), behind Cloudflare Turnstile. A password is kept as a fallback. Signed, HttpOnly session cookie. |
+| Calendar subscription | A per-user `.ics` feed: subscribe once in Apple or Google Calendar and it keeps updating. Reminder lead times are a setting; the link can be rotated if it leaks. |
+| AI quick add | Type one sentence ("interview with X next Tuesday 3pm"); the model extracts fragments, rules fill the form, you confirm. |
+| AI interview prep | Generates likely questions for an interview from its emails and (optionally) your résumé, written into the item's notes with a label. The résumé (PDF/Word) is converted to text in the browser. |
+| Forwarding guide | An illustrated how-to on the Emails page for setting up Gmail forwarding. |
+
+Phase 1 has a single account (the owner); the tables are already keyed by user for multi-user later. Deploy steps and the security notes are in [worker/README.md](./worker/README.md) (Chinese). Before deploying, replace the placeholders in `worker/wrangler.toml` (domain, e-mail, database id) with your own.
+
 ## Repository layout
 
 ```
 engine/   Parsing engine. Pure TypeScript, zero runtime dependencies. 485 tests.
-web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 156 tests.
+web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 163 tests.
+worker/   Cloudflare Worker: email intake, sign-in, calendar feed, AI endpoints, and the private board (Vite). 81 tests.
 docs/     Evaluation method and numbers.
 ```
 
@@ -109,8 +125,13 @@ npm run check            # type-check + tests with per-file coverage threshold
 cd web
 npm ci
 npm run dev              # http://localhost:3000
-npm test                 # 156 tests
+npm test                 # 163 tests
 npm run check            # types + lint + tests + production build
+
+# worker (install web first: the private board reuses its components)
+cd worker
+npm ci
+npm run check            # types + 81 tests + board build
 ```
 
 To use a real model instead of the recorded output, any OpenAI-compatible chat endpoint works:
@@ -126,7 +147,8 @@ To score the engine on your own mailbox, see `engine/tools/eval-extract.ts` and 
 ## Known limitations
 
 - **Not validated on unseen email yet.** See the note under the results table.
-- **No backend.** Manual edits in the demo live in the browser's local storage. Connecting a real mailbox and persisting state server-side is the next step.
+- **The demo has no backend.** Manual edits there live in the browser's local storage. The server side lives in `worker/` (see above).
+- **Single account for now.** Cloudflare's free plan can only send sign-in codes to verified addresses, so the private board has one owner. Opening it to other users needs a paid sending path.
 - **Promotional filtering is rule-based and in-sample.** Campus talks, live streams, job-board recommendations and "applications are open" mail are recognised from the subject line and folded; new marketing phrasings will slip through until a rule is added. The "mark as ad" button blocks a sender as a fallback.
 - **"Conditional future" mentions.** A receipt that says "you will be invited to an assessment within 24 hours" is still classified as an assessment by the rules. It is now caught by the model's veto and held for confirmation, but the rule itself is not fixed.
 - **Emails with no time-zone evidence** are held for confirmation by design, even when a human could guess the zone from the company.
@@ -136,7 +158,7 @@ To score the engine on your own mailbox, see `engine/tools/eval-extract.ts` and 
 
 Real emails, the hand-labelled truth set, and the regression tests that replay real emails are kept private. This repository contains code, synthetic data, and aggregate evaluation numbers only.
 
-The same board component is also used by a private deployment that receives forwarded email (Cloudflare Email Routing → Worker → D1) and adds AI-assisted quick add and interview prep. That server side is not in this repository; some comments and the pure logic for those features (`web/lib/demo/quickAdd.ts`, `prep.ts`) refer to it, and the corresponding controls simply do not appear in the demo.
+My own deployment's configuration (domain, e-mail addresses, database id, keys) is replaced with placeholders in `worker/wrangler.toml`. Secrets are never in the repository; they are set with `wrangler secret put`.
 
 ## How it was built
 

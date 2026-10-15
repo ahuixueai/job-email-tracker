@@ -1,0 +1,43 @@
+{
+  "name": "jobhunt-inbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "收转发来的招聘邮件：拆信 → 解析引擎（规则 + 模型）→ 存进 D1；同一个程序也托管你的私人看板（登录后才能看）。跑在 Cloudflare Workers 上。",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p board",
+    "test": "vitest run",
+    "build": "vite build",
+    "check": "tsc --noEmit && tsc --noEmit -p board && vitest run && vite build",
+    "dev:board": "vite",
+    "deploy": "vite build && wrangler deploy",
+    "db:init": "wrangler d1 migrations apply jobhunt-inbox --remote",
+    "db:recent": "wrangler d1 execute jobhunt-inbox --remote --command \"SELECT stored_at, status, from_addr, subject, error FROM emails ORDER BY stored_at DESC LIMIT 10\"",
+    "db:notices": "wrangler d1 execute jobhunt-inbox --remote --command \"SELECT received_at, subject, body FROM notices ORDER BY received_at DESC LIMIT 5\"",
+    "db:parsed": "wrangler d1 execute jobhunt-inbox --remote --command \"SELECT subject, status, via, model, error, json_extract(outcome, '\\$.trace.extraction.companyRaw') AS company, json_extract(outcome, '\\$.event.eventType') AS type, json_extract(outcome, '\\$.trace.format.format') AS format, json_extract(outcome, '\\$.event.dueType') AS due, json_extract(outcome, '\\$.event.startUtc') AS start_utc, json_extract(outcome, '\\$.event.sourceTimeZone') AS tz, json_extract(outcome, '\\$.event.confidence') AS confidence FROM emails ORDER BY stored_at DESC LIMIT 5\"",
+    "db:why": "wrangler d1 execute jobhunt-inbox --remote --command \"SELECT subject, from_addr, received_at, json_extract(outcome, '\\$.trace.extraction.timeText') AS model_time_text, json_extract(outcome, '\\$.trace.due.reason') AS time_reason, json_extract(outcome, '\\$.trace.tz.reason') AS tz_reason, json_extract(outcome, '\\$.trace.confidenceReasons') AS why_pending, length(body) AS body_chars FROM emails ORDER BY stored_at DESC LIMIT 5\"",
+    "import": "node scripts/import-gmail.mjs",
+    "db:review": "wrangler d1 execute jobhunt-inbox --remote --command \"SELECT substr(received_at, 1, 16) AS received, status, substr(from_addr, 1, 36) AS sender, substr(subject, 1, 40) AS subject, json_extract(outcome, '\\$.event.eventType') AS type, json_extract(outcome, '\\$.event.confidence') AS conf, coalesce(json_extract(outcome, '\\$.reason'), json_extract(outcome, '\\$.trace.prefilter.reason')) AS why FROM emails ORDER BY received_at DESC LIMIT 40\"",
+    "reparse": "node scripts/reparse.mjs"
+  },
+  "dependencies": {
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "4.10.38",
+    "postal-mime": "2.7.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "5.1.4",
+    "lucide-react": "1.31.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5.9.2",
+    "vite": "7.3.6",
+    "vitest": "^3.2.4",
+    "wrangler": "4.140.0"
+  }
+}

@@ -1,0 +1,45 @@
+# 收信程序的配置。改完这里要重新 `npm run deploy` 才生效。
+name = "jobhunt-inbox"
+main = "src/index.ts"
+compatibility_date = "2026-09-15"
+
+# 私人看板的网址（顶层配置，必须写在下面任何 [表] 之前）。部署时 Cloudflare 会自动建好 DNS 记录和 HTTPS 证书。
+routes = [
+  { pattern = "board.example.com", custom_domain = true }
+]
+
+[vars]
+# 只接受从这些 Gmail 转发过来的信，别人往你的收信地址乱发的邮件一律拒收，
+# 免得陌生人替你花模型调用费。多个地址用英文逗号隔开。
+# ⚠️ 换成你收招聘邮件的那个 Gmail。
+ALLOWED_FORWARDERS = "you@gmail.com"
+
+# 账号（第 1 期只有作者一个）：用这个邮箱收登录验证码。
+OWNER_EMAIL = "you@gmail.com"
+# 验证码从这个地址发出（你的域名要开着 Email Routing）。
+LOGIN_FROM = "login@example.com"
+# 防机器人（Cloudflare Turnstile）的站点密钥，公开的，建好站点后去掉下一行的 # 填进去；私密的那把用 `npx wrangler secret put TURNSTILE_SECRET`。
+# TURNSTILE_SITE_KEY = "你的站点密钥"
+
+# 模型接口（OpenAI 兼容）。密钥不写在这里，用 `npx wrangler secret put LLM_API_KEY` 单独设置。
+LLM_BASE_URL = "https://api.deepseek.com/v1"
+LLM_MODEL = "deepseek-v4-pro"
+
+# 发登录验证码。免费版只能发给在 Email Routing 里验证过的地址（第 1 期够用）；给任意邮箱发要 Workers 付费版。
+[[send_email]]
+name = "EMAIL"
+
+# 数据库：用 `npx wrangler d1 create jobhunt-inbox` 建，把它输出的 database_id 填到下面。
+[[d1_databases]]
+binding = "DB"
+database_name = "jobhunt-inbox"
+database_id = "你的数据库 id"
+migrations_dir = "migrations"
+
+# 私人看板：Vite 构建出的静态页面（npm run build → board-dist/）。
+# /api/* 先交给程序处理（登录、读数据）；其余路径是页面本身，找不到的路径都回到看板首页。
+[assets]
+directory = "./board-dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/cal/*"]
