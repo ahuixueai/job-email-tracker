@@ -5,6 +5,8 @@
 **直接用：** https://board.interviewtrack.me （公开内测，名额有限；邮箱验证码登录）
 **在线演示：** https://job-command-center-eta-two.vercel.app （公司和邮件全部虚构，解析都在浏览器里完成）
 
+![看板：按你时区的日程、高亮了时间的原邮件、日历、统计](docs/images/demo.gif)
+
 [English](./README.md)
 
 ## 为什么做这个
@@ -63,6 +65,8 @@
 - **邮件提醒**：面试、笔试前一天晚上一封（两地时间、链接、考试码、你的备注）；测评截止前 24 小时、3 小时各一封，标了完成就不发。
 - **日历订阅**：默认开始前 30 分钟提醒，链接泄露可以换。
 - **隐私**：大白话隐私政策、一键删除账号、登录记录 2 天后删除、每 6 小时自检。
+
+<img src="docs/images/reminder-email.png" alt="提醒邮件：你这里和当地的面试时间、会议链接、考试码、你的备注" width="520">
 
 部署步骤和安全说明见 [worker/README.md](./worker/README.md)。部署前先把 `worker/wrangler.toml` 里的占位符（域名、邮箱、数据库 id）换成你自己的。
 

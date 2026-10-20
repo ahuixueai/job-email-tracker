@@ -5,6 +5,8 @@
 **Try it:** https://board.interviewtrack.me (public beta, limited seats; sign in with an email code)
 **Live demo:** https://job-command-center-eta-two.vercel.app (all companies and emails fictional; everything runs in the browser)
 
+![The board: schedule in your time zone, the original email with the time highlighted, calendar, stats](docs/images/demo.gif)
+
 [中文说明](./README.zh-CN.md)
 
 ---
@@ -99,6 +101,8 @@ The demo is the front end only. `worker/` is the server side behind https://boar
 | Calendar subscription | A per-user `.ics` feed for Apple or Google Calendar, rings 30 minutes before by default. The link can be rotated if it leaks. |
 | AI, optional | Quick add from one sentence; interview prep from the item's emails and your résumé (converted to text in the browser). Per-user daily quota; can be switched off, in which case only rules run. |
 | Privacy | Plain-language privacy policy, delete-my-account, security headers, sign-in logs purged after 2 days, a 6-hourly health check. |
+
+<img src="docs/images/reminder-email.png" alt="An email reminder: the interview time where you are and where it happens, the meeting link, exam code and your notes" width="520">
 
 Deploy steps and the security notes are in [worker/README.md](./worker/README.md) (Chinese). Before deploying, replace the placeholders in `worker/wrangler.toml` (domain, e-mail, database id) with your own.
 
