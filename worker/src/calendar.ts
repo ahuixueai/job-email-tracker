@@ -1,11 +1,6 @@
-import { parsePrefs } from "../../web/lib/demo/boardPrefs";
-import type { BoardPrefs } from "../../web/lib/demo/boardPrefs";
 import { buildIcs } from "../../web/lib/demo/calendar";
-import { toLiveData } from "../../web/lib/demo/liveData";
-import type { EmailRow } from "../../web/lib/demo/liveData";
-import { EMPTY_EDITS, parseEdits } from "../../web/lib/demo/userEdits";
-import { buildAgendaData } from "../../web/lib/demo/view";
 import { ensureOwner, userByCalendarToken } from "./accounts.js";
+import { loadAgenda } from "./agendaData.js";
 import type { Env } from "./types.js";
 
 /**
@@ -14,7 +9,7 @@ import type { Env } from "./types.js";
  * 日历程序（Google、苹果）不会登录，所以靠链接里的口令认人。每人一把口令，存在 users 表里，和登录无关；
  * 链接泄露了就在设置里「换一个新链接」，旧链接立刻失效。
  * 作者账号的口令沿用以前「由看板密码算出来」的那把（calendarToken），升级后已订阅的日历照常能用。
- * 内容和看板「日程」用的是同一个函数算出来的（web/lib/demo/view.ts），不会两边对不上。
+ * 内容和看板「日程」用的是同一个函数算出来的（agendaData.ts），不会两边对不上。
  */
 
 const encoder = new TextEncoder();
@@ -26,16 +21,6 @@ export async function calendarToken(secret: string): Promise<string> {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
 }
 
-/** 读云端的看板偏好；没存过或坏了就用默认值。 */
-export async function loadPrefs(env: Env): Promise<BoardPrefs> {
-  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'prefs'").first<{ value: string }>();
-  try {
-    return parsePrefs(row ? JSON.parse(row.value) : null);
-  } catch {
-    return parsePrefs(null);
-  }
-}
-
 export async function handleCalendar(request: Request, env: Env, nowMs: number): Promise<Response> {
   const notFound = () => new Response("没有这个日历", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   const match = /^\/cal\/([0-9a-f]{40})\.ics$/.exec(new URL(request.url).pathname);
@@ -45,24 +30,7 @@ export async function handleCalendar(request: Request, env: Env, nowMs: number):
   const user = await userByCalendarToken(env, match[1] ?? "");
   if (user === null) return notFound();
 
-  const [rows, editsRow, prefs] = await Promise.all([
-    env.DB.prepare(
-      "SELECT id, received_at, stored_at, via, from_addr, subject, body, status, outcome, model, error FROM emails ORDER BY received_at DESC LIMIT 1000",
-    ).all<EmailRow>(),
-    env.DB.prepare("SELECT value FROM settings WHERE key = 'edits'").first<{ value: string }>(),
-    loadPrefs(env),
-  ]);
-  const safeJson = (text: string | undefined): unknown => {
-    try {
-      return text === undefined ? null : JSON.parse(text);
-    } catch {
-      return null;
-    }
-  };
-  const edits = editsRow ? parseEdits(safeJson(editsRow.value)) : EMPTY_EDITS;
-  // 日历里只用绝对时刻（UTC），所以这里的「看的人时区」随便给一个，不影响结果
-  const live = toLiveData(rows.results, "UTC");
-  const { agenda } = buildAgendaData(live.samples, live.results, edits, "UTC");
+  const { agenda, prefs } = await loadAgenda(env, user.id);
   const origin = new URL(request.url).origin;
   return new Response(buildIcs(agenda, nowMs, origin, prefs.calendar), {
     headers: {

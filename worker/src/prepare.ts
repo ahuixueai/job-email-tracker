@@ -2,6 +2,9 @@ import { openAICompatibleComplete, parseModelJson } from "../../engine/src/index
 import type { FetchLike } from "../../engine/src/index.js";
 import { buildPrepUserPrompt, MAX_RESUME_CHARS, parsePrepOutput, parsePrepRequest, PREP_SYSTEM_PROMPT } from "../../web/lib/demo/prep";
 import type { PrepOutput } from "../../web/lib/demo/prep";
+import type { User } from "./accounts.js";
+import { takeAiCall } from "./ai.js";
+import { getUserSetting } from "./store.js";
 import type { Env } from "./types.js";
 
 /** 写准备要点比摘片段慢得多；你在页面上等着，但给足时间。 */
@@ -13,11 +16,11 @@ export interface StoredResume {
   updatedAt: string;
 }
 
-export async function loadResume(env: Env): Promise<StoredResume | null> {
-  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'resume'").first<{ value: string }>();
-  if (!row) return null;
+export async function loadResume(env: Env, userId: string): Promise<StoredResume | null> {
+  const value = await getUserSetting(env, userId, "resume");
+  if (value === null) return null;
   try {
-    const v = JSON.parse(row.value) as Partial<StoredResume>;
+    const v = JSON.parse(value) as Partial<StoredResume>;
     return typeof v.text === "string" && v.text.trim().length > 0
       ? { text: v.text, fileName: typeof v.fileName === "string" ? v.fileName : null, updatedAt: typeof v.updatedAt === "string" ? v.updatedAt : "" }
       : null;
@@ -41,12 +44,20 @@ export type PrepareResult = { ok: true; prep: PrepOutput; usedResume: boolean } 
  * POST /api/prepare：这家公司的来信（浏览器挑好发来）+ 云端存的简历 → 模型 → 校验过的准备要点。
  * 只在你点「生成」时调用一次；不落库（结果由看板写进这件事的备注）。
  */
-export async function prepare(env: Env, body: unknown, fetchImpl: FetchLike = (url, init) => fetch(url, init)): Promise<PrepareResult> {
+export async function prepare(
+  env: Env,
+  user: User,
+  nowMs: number,
+  body: unknown,
+  fetchImpl: FetchLike = (url, init) => fetch(url, init),
+): Promise<PrepareResult> {
   const request = parsePrepRequest(body);
   if (request === null) return { ok: false, status: 400, error: "请求的格式不对" };
   const { LLM_API_KEY: apiKey, LLM_BASE_URL: baseUrl, LLM_MODEL: model } = env;
   if (!apiKey || !baseUrl || !model) return { ok: false, status: 503, error: "还没有配置模型，没法生成" };
-  const resume = await loadResume(env);
+  const gate = await takeAiCall(env, user, nowMs);
+  if (!gate.ok) return { ok: false, status: 403, error: gate.note.replace("，只用规则解析", "") };
+  const resume = await loadResume(env, user.id);
   const complete = openAICompatibleComplete({ baseUrl, apiKey, model, fetchImpl });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

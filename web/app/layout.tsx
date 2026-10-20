@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "智能求职指挥中心",
+  title: "准点 · InterviewTrack（演示）",
   description: "面试与笔试日程管理：双时区、优先级排序、滑动操作。",
 };
 

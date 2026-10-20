@@ -52,8 +52,16 @@ export interface Env {
   BOARD_PASSWORD?: string;
   /** 签 cookie、算验证码哈希的钥匙。用 `wrangler secret put SESSION_SECRET` 设置；没设时退回用看板密码。 */
   SESSION_SECRET?: string;
-  /** 作者账号的邮箱（第 1 期只有这一个账号）。 */
+  /** 作者账号的邮箱。收监控提醒；另有密码备用登录。 */
   OWNER_EMAIL?: string;
+  /** 收信地址的域名（u-口令@这个域名）。默认 interviewtrack.me。 */
+  INBOX_DOMAIN?: string;
+  /** "closed" = 关掉注册（已有账号照常登录）。默认开着。 */
+  REGISTRATION?: string;
+  /** 最多几个账号。默认 50。 */
+  MAX_USERS?: string;
+  /** 每人每天最多调用几次 AI（摘信息 + 一句话添加 + 面试准备）。默认 100；作者账号不限。 */
+  AI_DAILY_LIMIT?: string;
   /** 登录验证码从这个地址发出（域名要在 Cloudflare Email Service 里开通）。 */
   LOGIN_FROM?: string;
   /** Cloudflare Turnstile（防机器人）：公开的站点密钥写在 wrangler.toml，私密的用 `wrangler secret put TURNSTILE_SECRET`。 */

@@ -1,8 +1,10 @@
-import { cpSync } from "node:fs";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { headersFile, inlineScripts } from "./src/security";
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -25,9 +27,24 @@ function pdfjsData() {
   };
 }
 
+/**
+ * 安全响应头：构建完把 board-dist/_headers 写出来（Cloudflare 静态资源层按它加头）。
+ * index.html 里的内联脚本按内容算 sha256 填进 CSP——脚本改了，哈希跟着变，不会把自己拦住。
+ */
+function securityHeaders() {
+  return {
+    name: "write-security-headers",
+    closeBundle() {
+      const html = readFileSync(here("./board-dist/index.html"), "utf8");
+      const hashes = inlineScripts(html).map((s) => `sha256-${createHash("sha256").update(s, "utf8").digest("base64")}`);
+      writeFileSync(here("./board-dist/_headers"), headersFile(hashes));
+    },
+  };
+}
+
 export default defineConfig({
   root: here("./board"),
-  plugins: [react(), tailwindcss(), pdfjsData()],
+  plugins: [react(), tailwindcss(), pdfjsData(), securityHeaders()],
   resolve: {
     alias: { "@": here("../web") },
     dedupe: ["react", "react-dom", "lucide-react"],

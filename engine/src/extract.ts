@@ -2,6 +2,7 @@ import type { EventType } from "./types.js";
 import { isEventType } from "./types.js";
 import type { CleanEmail } from "./rawEmail.js";
 import { normalizeText } from "./text.js";
+import { stripGenericWords } from "./company.js";
 
 /**
  * LLM 抽取层。
@@ -136,16 +137,24 @@ export class StubExtractor implements LLMExtractor {
   extract(email: CleanEmail): Promise<Extraction> {
     return Promise.resolve({
       ...EMPTY_EXTRACTION,
-      companyRaw: this.companyFrom(email.subject),
+      companyRaw: companyFromSubject(email.subject),
     });
   }
+}
 
-  private companyFrom(subject: string): string | null {
-    for (const pattern of SUBJECT_COMPANY) {
-      const hit = pattern.exec(subject);
-      const value = hit?.[1]?.trim();
-      if (value !== undefined && value.length >= 2) return value;
-    }
-    return null;
+/**
+ * 按固定格式从标题里取公司名。取到的是套话（「【提醒】」「【智联推荐】」）就当没取到。
+ * 模型超时、没配模型时，管线也靠它补公司名。
+ */
+export function companyFromSubject(subject: string): string | null {
+  for (const pattern of SUBJECT_COMPANY) {
+    const hit = pattern.exec(subject);
+    const value = hit?.[1]?.trim();
+    if (value === undefined || value.length < 2) continue;
+    // 「王同学的面试邀请」「张三的笔试通知」：「X的」是收件人，不是公司
+    if (value.endsWith("的")) continue;
+    const stripped = stripGenericWords(value);
+    if (stripped.length > 0) return stripped;
   }
+  return null;
 }

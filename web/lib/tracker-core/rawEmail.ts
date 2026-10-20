@@ -29,6 +29,11 @@ export interface CleanEmail {
   id: string;
   /** 发件域名，小写，不含 `@`。取不到时为空串。 */
   senderDomain: string;
+  /**
+   * 发件人显示名（`云帆集团 <noreply@…>` 里的「云帆集团」）。没有时为空串。
+   * 只作公司名的后备线索；可选，是为了不打扰只构造了旧字段的调用方。
+   */
+  senderName?: string;
   subject: string;
   body: string;
   /** 主题 + 正文，规则层大多数扫描直接用它。 */
@@ -75,6 +80,18 @@ const QUOTE_MARKERS: readonly RegExp[] = [
   /\bOn\s+(?:\w{3,9},?\s+)?\w{3,9}\.?\s+\d{1,2},?\s+\d{4}\b[^\n]{0,120}?\bwrote:/i,
   /在\s*\d{4}\s*年[^\n]{0,60}?(?:写道|寫道)[:：]/,
 ];
+
+/** 从 `Name <a@b.com>` 里取显示名，去掉引号。没有尖括号（裸地址）时返回空串。 */
+export function extractSenderName(from: string): string {
+  const source = from ?? "";
+  const angle = source.indexOf("<");
+  if (angle <= 0) return "";
+  return source
+    .slice(0, angle)
+    .trim()
+    .replace(/^["'“”]+|["'“”]+$/g, "")
+    .trim();
+}
 
 /** 从 `Name <a@b.com>` 或 `a@b.com` 里取域名。取不到返回空串。 */
 export function extractSenderDomain(from: string): string {
@@ -149,6 +166,7 @@ export function toCleanEmail(raw: RawEmail): CleanEmail {
   return {
     id: raw.id,
     senderDomain: extractSenderDomain(raw.from ?? ""),
+    senderName: extractSenderName(raw.from ?? ""),
     subject,
     body,
     text: `${subject} ${body}`.trim(),

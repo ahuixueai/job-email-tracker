@@ -9,6 +9,7 @@ import type {
   LLMExtractor,
   ParseOutcome,
   RawEmail,
+  TimeZoneInference,
 } from "../tracker-core/index";
 
 /**
@@ -152,6 +153,8 @@ export interface DemoResult {
    */
   unzoned: { local: string; kind: "fixed_start" | "deadline" } | null;
   timeZone: string | null;
+  /** 时区是怎么定下来的：信里写明、地点、域名、你确认过这家公司、你设置的求职地。 */
+  timeZoneSource: TimeZoneInference["source"] | null;
   confidence: Confidence | null;
   /** 降级原因。高置信时为空。 */
   confidenceReasons: readonly string[];
@@ -171,6 +174,7 @@ const TZ_SOURCE_LABEL: Readonly<Record<string, string>> = {
   location: "信里出现的地点",
   domain: "发件域名",
   ledger: "这家公司的历史记录",
+  jobRegion: "你设置的求职地",
   none: "没有线索",
 };
 
@@ -305,6 +309,7 @@ export function notParsedResult(label: string, reason: string): DemoResult {
     when: null,
     unzoned: null,
     timeZone: null,
+    timeZoneSource: null,
     confidence: null,
     confidenceReasons: [],
     dedupKey: null,
@@ -366,6 +371,7 @@ export function toDemoResult(outcome: ParseOutcome, viewerTimeZone: string): Dem
         : describeWhen(event.startUtc, event.sourceTimeZone, viewerTimeZone),
     unzoned: trace.due.unzoned ?? null,
     timeZone: event.sourceTimeZone,
+    timeZoneSource: trace.tz.source,
     confidence: event.confidence,
     confidenceReasons: trace.confidenceReasons,
     dedupKey: dedupKeyOf(event),

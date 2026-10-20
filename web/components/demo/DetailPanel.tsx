@@ -478,14 +478,19 @@ function TimeBlock({ result, viewerTimeZone }: { result: DemoResult; viewerTimeZ
         </dd>
         {result.when.sameZone ? null : (
           <>
-            <dt className="text-ink-soft">当地</dt>
-            <dd className="text-ink">
+            <dt className="text-ink-soft">原来的时间</dt>
+            <dd className="text-ink" data-source-time>
               {result.when.source}
               <span className="ml-2 text-xs text-ink-faint">{zoneLabel(result.timeZone)}</span>
             </dd>
           </>
         )}
       </dl>
+      {result.timeZoneSource === "jobRegion" ? (
+        <p className="mt-3 text-xs text-ink-soft" data-job-zone-note>
+          信里没写时区，按你设置的求职地（{zoneLabel(result.timeZone)}）算的。不对的话，放进日程或编辑时把时区改过来。
+        </p>
+      ) : null}
       {hint ? <p className="mt-3 text-xs text-ink-soft">{hint}</p> : null}
     </div>
   );

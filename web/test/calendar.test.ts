@@ -22,14 +22,14 @@ function item(id: string, utc: string, over: Partial<DemoResult> = {}, extra: Pa
 }
 
 describe("日历订阅内容", () => {
-  it("准点开始：开始起 1 小时，提前 1 小时提醒；截止：截止前 30 分钟，提前 1 天提醒", () => {
+  it("准点开始：开始起 1 小时，提前 30 分钟提醒；截止：截止前 30 分钟，提前 1 天提醒", () => {
     const ics = buildIcs(
       [item("a", "2026-10-20T11:00:00.000Z"), item("b", "2026-10-21T06:00:00.000Z", { dueType: "deadline", kindLabel: "在线测评" })],
       NOW,
       "https://board.example",
     );
     expect(ics).toContain("DTSTART:20261020T110000Z\r\nDTEND:20261020T120000Z");
-    expect(ics).toContain("TRIGGER:-PT1H");
+    expect(ics).toContain("TRIGGER:-PT30M");
     expect(ics).toContain("DTSTART:20261021T053000Z\r\nDTEND:20261021T060000Z");
     expect(ics).toContain("SUMMARY:截止：在线测评 · 星河科技");
     expect(ics).toContain("TRIGGER;RELATED=END:-P1D");
@@ -63,12 +63,12 @@ describe("日历订阅内容", () => {
 describe("日历提醒的提前量（设置里选）", () => {
   const agenda = () => [item("a", "2026-10-20T11:00:00.000Z"), item("b", "2026-10-21T06:00:00.000Z", { dueType: "deadline", kindLabel: "在线测评" })];
   it("按选的写：准点 30 分钟、截止 3 小时", () => {
-    const ics = buildIcs(agenda(), NOW, "https://board.example", { fixedAlarm: 30, deadlineAlarm: 180 });
+    const ics = buildIcs(agenda(), NOW, "https://board.example", { fixedAlarm: 30, deadlineAlarm: 180, emailReminders: true });
     expect(ics).toContain("TRIGGER:-PT30M");
     expect(ics).toContain("TRIGGER;RELATED=END:-PT3H");
   });
   it("选「不提醒」就不放提醒", () => {
-    const ics = buildIcs(agenda(), NOW, "https://board.example", { fixedAlarm: null, deadlineAlarm: null });
+    const ics = buildIcs(agenda(), NOW, "https://board.example", { fixedAlarm: null, deadlineAlarm: null, emailReminders: true });
     expect(ics).not.toContain("BEGIN:VALARM");
     expect(ics.split("BEGIN:VEVENT")).toHaveLength(3);
   });

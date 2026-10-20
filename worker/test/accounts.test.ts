@@ -3,13 +3,13 @@ import { newCode, normalizeEmail } from "../src/accounts.js";
 import { handleApi } from "../src/api.js";
 import type { ApiDeps } from "../src/api.js";
 import type { Env } from "../src/types.js";
-import { fakeDb } from "./fakeDb.js";
+import { testDb } from "./testDb.js";
 
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const OWNER = "owner@example.com";
 
 function setup(over: Partial<Env> = {}) {
-  const fake = fakeDb();
+  const fake = testDb();
   const env: Env = { DB: fake.db, BOARD_PASSWORD: "pw", SESSION_SECRET: "sess", OWNER_EMAIL: OWNER, TURNSTILE_SECRET: "ts", ...over };
   const sent: { to: string; code: string }[] = [];
   const deps: ApiDeps = {
@@ -49,14 +49,39 @@ describe("邮箱验证码登录", () => {
     expect(((await session.json()) as { user: { email: string; role: string } }).user).toEqual({ email: OWNER, role: "owner" });
   });
 
-  it("不在名单里的邮箱：回答一样是「已发送」，但不真发", async () => {
-    const { call, sent } = setup();
+  it("开放注册：新邮箱也收到码，填对才建账号（普通成员），有自己的收信地址", async () => {
+    const { call, sent, all } = setup({ INBOX_DOMAIN: "my.example" });
+    const res = await call("/api/auth/code", { email: "new@example.com", turnstile: "human" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(sent.map((s) => s.to)).toEqual(["new@example.com"]);
+    // 只要了码、还没验证：不建账号
+    expect(all("SELECT email FROM users WHERE email = 'new@example.com'")).toHaveLength(0);
+    const ok = await call("/api/auth/verify", { email: "new@example.com", code: sent[0]!.code });
+    expect(ok.status).toBe(200);
+    const session = (await (await call("/api/session", undefined, { cookie: cookieOf(ok) })).json()) as { user: { role: string }; inbox: string };
+    expect(session.user.role).toBe("member");
+    expect(session.inbox).toMatch(/^u-[a-z0-9]{10}@my\.example$/);
+  });
+
+  it("关掉注册：新邮箱回答一样是「已发送」，但不真发、也建不了账号", async () => {
+    const { call, sent } = setup({ REGISTRATION: "closed" });
     const res = await call("/api/auth/code", { email: "stranger@example.com", turnstile: "human" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(sent).toHaveLength(0);
     const verify = await call("/api/auth/verify", { email: "stranger@example.com", code: "123456" });
     expect(verify.status).toBe(401);
+  });
+
+  it("名额满了：新邮箱直接告诉他满了；已有账号照常登录", async () => {
+    const { call, sent } = setup({ MAX_USERS: "1" });
+    await call("/api/login", { password: "pw", turnstile: "human" }); // 作者账号占掉 1 个名额
+    const full = await call("/api/auth/code", { email: "late@example.com", turnstile: "human" });
+    expect(full.status).toBe(403);
+    expect(((await full.json()) as { error: string }).error).toContain("名额已满");
+    expect((await call("/api/auth/code", { email: OWNER, turnstile: "human" }, { at: NOW + 61_000 })).status).toBe(200);
+    expect(sent.map((s) => s.to)).toEqual([OWNER]);
   });
 
   it("没过人机验证：不发", async () => {
@@ -78,6 +103,31 @@ describe("邮箱验证码登录", () => {
       // 一小时后重新计数
       expect((await call("/api/auth/code", { email, turnstile: "human" }, { at: NOW + 3_700_000 })).status).toBe(200);
     }
+  });
+
+  it("发信服务出错：告诉没发出去；这次不占冷却，可以马上重试，重试成功的码能用", async () => {
+    const fake = testDb();
+    const env: Env = { DB: fake.db, BOARD_PASSWORD: "pw", SESSION_SECRET: "sess", OWNER_EMAIL: OWNER, TURNSTILE_SECRET: "ts" };
+    let broken = true;
+    const sent: { to: string; code: string }[] = [];
+    const deps: ApiDeps = {
+      checkTurnstile: () => Promise.resolve(true),
+      sendCode: (to, code) => {
+        if (broken) return Promise.reject(Object.assign(new Error("not ready"), { code: "E_EMAIL_SENDING_NOT_READY" }));
+        sent.push({ to, code });
+        return Promise.resolve();
+      },
+    };
+    const post = (path: string, body: unknown, at: number) =>
+      handleApi(new Request(`https://board.example${path}`, { method: "POST", headers: { "cf-connecting-ip": "203.0.113.5" }, body: JSON.stringify(body) }), env, at, deps);
+    const first = await post("/api/auth/code", { email: "friend@qq.example", turnstile: "human" }, NOW);
+    expect(first.status).toBe(502);
+    expect(((await first.json()) as { error: string }).error).toContain("没发出去");
+    broken = false;
+    const retry = await post("/api/auth/code", { email: "friend@qq.example", turnstile: "human" }, NOW + 2_000);
+    expect(retry.status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect((await post("/api/auth/verify", { email: "friend@qq.example", code: sent[0]!.code }, NOW + 3_000)).status).toBe(200);
   });
 
   it("同一来源一小时最多发 20 次（换着邮箱刷也不行）", async () => {
@@ -131,9 +181,9 @@ describe("邮箱验证码登录", () => {
   });
 
   it("账号被删掉后，它的 cookie 立刻失效", async () => {
-    const { call, users } = setup();
+    const { call, exec } = setup();
     const ok = await call("/api/login", { password: "pw", turnstile: "human" });
-    users.splice(0, users.length);
+    exec("DELETE FROM users");
     expect((await call("/api/session", undefined, { cookie: cookieOf(ok) })).status).toBe(401);
   });
 });

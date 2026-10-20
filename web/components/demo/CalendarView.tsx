@@ -40,7 +40,7 @@ export function CalendarView({
   const selectedItems = byDate.get(selected) ?? [];
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
       <div className="min-w-0 rounded-xl border border-hairline bg-surface p-3 sm:p-4">
         <div className="flex items-center justify-between">
           <h3 className="tabular text-sm font-semibold text-ink">
@@ -83,7 +83,7 @@ export function CalendarView({
                 aria-pressed={isSelected}
                 aria-label={`${day.dateKey}，${events.length} 项安排`}
                 data-date={day.dateKey}
-                className={`flex min-h-16 min-w-0 flex-col items-stretch rounded-lg border p-1 text-left ${
+                className={`flex min-h-16 min-w-0 flex-col items-stretch rounded-lg border p-1 text-left lg:min-h-24 2xl:min-h-28 ${
                   isSelected ? "border-brand-line bg-brand-soft" : "border-hairline hover:bg-raised"
                 }`}
               >

@@ -1,7 +1,9 @@
-import { openAICompatibleComplete, parseModelJson } from "../../engine/src/index.js";
+import { fastExtraBody, openAICompatibleComplete, parseModelJson } from "../../engine/src/index.js";
 import type { FetchLike } from "../../engine/src/index.js";
 import { EMPTY_QUICK_MODEL, parseQuickModelOutput, QUICK_MAX_CHARS, QUICK_SYSTEM_PROMPT } from "../../web/lib/demo/quickAdd";
 import type { QuickModelOutput } from "../../web/lib/demo/quickAdd";
+import type { User } from "./accounts.js";
+import { takeAiCall } from "./ai.js";
 import type { Env } from "./types.js";
 
 /** 一句话添加的模型调用：你在等着，别让你等太久。 */
@@ -14,13 +16,16 @@ export type QuickAddResult = { ok: true; model: QuickModelOutput; warning?: stri
  * 时间不让模型算——浏览器里的规则（web/lib/demo/quickAdd.ts）从原话里算。
  * 模型给的名字不在原话里就丢掉（parseQuickModelOutput），所以它编不出东西来。
  */
-export async function quickAdd(env: Env, text: unknown, fetchImpl: FetchLike = (url, init) => fetch(url, init)): Promise<QuickAddResult> {
+export async function quickAdd(env: Env, user: User, nowMs: number, text: unknown, fetchImpl: FetchLike = (url, init) => fetch(url, init)): Promise<QuickAddResult> {
   if (typeof text !== "string" || text.trim().length === 0) return { ok: false, status: 400, error: "请先写一句话" };
   if (text.length > QUICK_MAX_CHARS) return { ok: false, status: 400, error: `一句话别超过 ${QUICK_MAX_CHARS} 个字` };
   const { LLM_API_KEY: apiKey, LLM_BASE_URL: baseUrl, LLM_MODEL: model } = env;
   if (!apiKey || !baseUrl || !model) return { ok: false, status: 503, error: "还没有配置模型，没法识别；请直接在下面填" };
+  const gate = await takeAiCall(env, user, nowMs);
+  if (!gate.ok) return { ok: true, model: EMPTY_QUICK_MODEL, warning: `${gate.note.replace("，只用规则解析", "")}，公司和岗位请自己填（时间照样按你的话算了）` };
 
-  const complete = openAICompatibleComplete({ baseUrl, apiKey, model, fetchImpl });
+  const extraBody = fastExtraBody(baseUrl);
+  const complete = openAICompatibleComplete({ baseUrl, apiKey, model, fetchImpl, ...(extraBody ? { extraBody } : {}) });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const reply = await Promise.race([

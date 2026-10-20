@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { runDemoParse } from "@/lib/demo/parseDemo";
 import { parseEmail, StubExtractor } from "@/lib/tracker-core/index";
 import type { RawEmail } from "@/lib/tracker-core/index";
-import { extractorNote, forwardingCode, toLiveData } from "../src/live";
+import { extractorNote, forwardingNotices, noticeGroupIds, toLiveData } from "../src/live";
 import type { EmailRow } from "../src/live";
 
 const VIEWER = "Asia/Shanghai";
@@ -79,11 +79,59 @@ describe("收信记录 → 看板", () => {
     expect(extractorNote(models, ["b"])).toContain("全部由规则判断");
   });
 
-  it("Gmail 转发验证码：只提醒 7 天内的", () => {
-    const now = Date.parse("2026-10-12T00:00:00Z");
-    const notice = { id: "n", kind: "gmail-forwarding", subject: "Gmail Forwarding Confirmation", body: "验证码：123456789\n\n..." };
-    expect(forwardingCode([{ ...notice, received_at: "2026-10-11T00:00:00.000Z" }], now)?.code).toBe("123456789");
-    expect(forwardingCode([{ ...notice, received_at: "2026-10-01T00:00:00.000Z" }], now)).toBeNull();
-    expect(forwardingCode([{ ...notice, body: "没有码", received_at: "2026-10-11T00:00:00.000Z" }], now)).toBeNull();
+});
+
+describe("邮箱转发确认", () => {
+  const NOW = Date.parse("2026-10-16T17:30:00Z");
+  it("Gmail 给验证码；QQ 给确认按钮（只认服务商自己的域名，别的链接不做成按钮）；7 天前的不显示", () => {
+    const list = forwardingNotices(
+      [
+        { id: "q", kind: "forward-verify", received_at: "2026-10-16T17:20:00Z", subject: "QQ邮箱自动转发验证邮件", body: "发件人：x\n\n接受转发（https://wx.mail.qq.com/a?x=1&y=2）\n如果你误触导致该转发生效，请点击取消接受转发（https://wx.mail.qq.com/c）\n点我（https://evil.example/x）" },
+        { id: "g", kind: "gmail-forwarding", received_at: "2026-10-16T17:00:00Z", subject: "Gmail Forwarding Confirmation", body: "验证码：123456789\n\n..." },
+        { id: "old", kind: "forward-verify", received_at: "2026-10-01T00:00:00Z", subject: "旧的", body: "" },
+        { id: "n", kind: "other", received_at: "2026-10-16T17:00:00Z", subject: "别的", body: "" },
+      ],
+      NOW,
+    );
+    expect(list.map((n) => n.id)).toEqual(["q", "g"]);
+    expect(list[0]!.links).toEqual([
+      { label: "接受转发", url: "https://wx.mail.qq.com/a?x=1&y=2" },
+      { label: "取消接受转发", url: "https://wx.mail.qq.com/c" },
+    ]);
+    expect(list[1]).toMatchObject({ provider: "gmail", code: "123456789", links: [] });
+  });
+
+  it("Gmail 确认信里的裸地址也做成「一键确认」；认不出的给出正文开头", () => {
+    const [g, x] = forwardingNotices(
+      [
+        { id: "g", kind: "gmail-forwarding", received_at: "2026-10-16T17:00:00Z", subject: "Gmail Forwarding Confirmation", body: "验证码：123456789\n\nTo allow a@x to forward, click:\nhttps://mail-settings.google.com/mail/vf-abc.\nhttp://evil.example/x" },
+        { id: "x", kind: "forward-verify", received_at: "2026-10-16T17:00:00Z", subject: "Please verify forwarding", body: "发件人：x\n\n你的确认码是 8812" },
+      ],
+      NOW,
+    );
+    expect(g!.links).toEqual([{ label: "一键确认转发", url: "https://mail-settings.google.com/mail/vf-abc" }]);
+    expect(x!.links).toEqual([]);
+    expect(x!.excerpt).toBe("你的确认码是 8812");
+  });
+});
+
+describe("转发确认什么时候不再显示", () => {
+  const NOW = Date.parse("2026-10-16T20:00:00Z");
+  const gmail = (id: string, at: string, code: string) => ({ id, kind: "gmail-forwarding", received_at: at, subject: "Gmail Forwarding Confirmation", body: `验证码：${code}\n\nhttps://mail-settings.google.com/mail/vf-${id}\nhttps://support.google.com/mail/x` });
+  it("确认一封：同一个邮箱以前的旧确认一起删，别的邮箱的不动", () => {
+    const rows = [
+      gmail("c", "2026-10-12T18:31:00Z", "333333333"),
+      gmail("b", "2026-10-12T18:27:00Z", "222222222"),
+      { id: "q", kind: "forward-verify", received_at: "2026-10-16T17:20:00Z", subject: "QQ邮箱自动转发验证邮件", body: "" },
+    ];
+    expect(noticeGroupIds(rows, "c")).toEqual(["c", "b"]);
+    expect(noticeGroupIds(rows, "q")).toEqual(["q"]);
+  });
+
+  it("同一个邮箱申请了几次只留最新；只留第一个链接", () => {
+    const rows = [gmail("c", "2026-10-12T18:31:00Z", "333333333"), gmail("b", "2026-10-12T18:27:00Z", "222222222"), gmail("a", "2026-10-12T18:25:00Z", "111111111")];
+    const pending = forwardingNotices(rows, NOW);
+    expect(pending.map((n) => [n.id, n.code])).toEqual([["c", "333333333"]]);
+    expect(pending[0]!.links).toEqual([{ label: "一键确认转发", url: "https://mail-settings.google.com/mail/vf-c" }]);
   });
 });

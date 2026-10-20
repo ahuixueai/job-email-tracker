@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>隐私政策与使用条款 · 准点</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <style>
+      :root { color-scheme: light dark; --bg: #f4f8fc; --surface: #ffffff; --ink: #172331; --soft: #4b5b6c; --line: #dbe4ee; --accent: #2f6f9f; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #0d141b; --surface: #141d26; --ink: #e6edf3; --soft: #9fb0c1; --line: #263342; --accent: #79b3df; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+      main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+      .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      h2 { font-size: 17px; margin: 28px 0 8px; }
+      p, li { color: var(--ink); }
+      .meta { color: var(--soft); font-size: 13px; margin: 0 0 16px; }
+      .note { background: var(--bg); border-radius: 12px; padding: 12px 14px; color: var(--soft); font-size: 14px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; vertical-align: top; padding: 8px 6px; border-top: 1px solid var(--line); }
+      th { color: var(--soft); font-weight: 600; white-space: nowrap; }
+      a { color: var(--accent); }
+      ul { padding-left: 20px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>隐私政策与使用条款</h1>
+        <p class="meta">适用于「准点 InterviewTrack」（board.interviewtrack.me）· 生效日期 2026-10-19 · 版本 0.4（内测期）</p>
+        <p class="note">一句话版本：你转发来的招聘邮件只用来帮你排日程；每个人的数据分开存，别的用户看不到；正文默认交给 AI 服务商 DeepSeek 摘取信息，你可以关掉；数据存在 Cloudflare；你随时可以删掉一封或整个账号；我们不卖数据、不投广告。</p>
+
+        <h2>1. 谁在运营</h2>
+        <p>本服务由个人开发者运营，目前处于内测期、免费使用，名额有限。联系方式：<a href="mailto:privacy@interviewtrack.me">privacy@interviewtrack.me</a>。</p>
+
+        <h2>2. 我们收集什么、为什么</h2>
+        <table>
+          <tr><th>数据</th><td>用途</td><td>保留多久</td></tr>
+          <tr><th>登录邮箱</th><td>登录、发验证码</td><td>到你删除账号</td></tr>
+          <tr><th>收信地址与转信邮箱</th><td>系统给你一个专属收信地址；你在设置里加的其他转信邮箱（最多 3 个）。用于认出哪些信是你转来的，别人往你的地址乱发的信会被拒收</td><td>到你删除账号</td></tr>
+          <tr><th>验证码</th><td>登录。只存加密后的摘要，不存验证码本身；连同申请验证码的邮箱、次数一起记录，用于限制频率</td><td>码 10 分钟后失效；这条记录 1 天没动就自动删除</td></tr>
+          <tr><th>IP 地址与时间</th><td>只在发验证码、登录失败时记录，用于防暴力破解</td><td>2 天后自动删除</td></tr>
+          <tr><th>你转发来的邮件</th><td>发件人、标题、收信时间、正文纯文本（最多 2 万字）。用于在看板上显示、高亮原文、规则改进后重新解析。<strong>不存附件，不存原始 HTML。</strong>如果你在邮箱里设了「全部转发」，准点会先看标题、正文和发件人：不像招聘信的<strong>当场丢弃，不保存，也不交给 AI</strong>，只留下像招聘信的。</td><td>到你删除这封信或删除账号</td></tr>
+          <tr><th>解析结论</th><td>公司、事件类型、时间、时区、判断依据</td><td>随邮件一起删除</td></tr>
+          <tr><th>你在看板上的操作与设置</th><td>确认、编辑、备注、时区、提醒设置、日历订阅口令；最近一次打开看板时设备的时区（「你在哪」选了跟随设备时，用来算邮件提醒的发送时间）</td><td>到你删除账号</td></tr>
+          <tr><th>邮件提醒记录</th><td>哪件事的哪一次提醒已经发过（只记事件编号和发送时间），保证同一个提醒不重复发</td><td>发出 30 天后自动删除</td></tr>
+          <tr><th>AI 开关与用量</th><td>你是否开着 AI；每天调用了几次（只记次数，不记内容），用于每日额度</td><td>到你删除账号</td></tr>
+          <tr><th>简历文字（可选）</th><td>只在你上传时保存。PDF / Word 在你的浏览器里转成文字，原文件不上传。用于 AI 面试准备</td><td>到你删除简历或删除账号</td></tr>
+        </table>
+        <p><strong>谁能看到：</strong>每个用户的邮件、设置、简历都按账号分开存，看板只给你看你自己的，别的用户看不到。运营者（开发者本人）有数据库的管理权限，只在排查故障、处理你的请求时查看，不会挑出来看你的信。</p>
+        <p><strong>我们不做的事：</strong>不读取你的邮箱（只处理你主动转发过来的信；全部转发过来的私人邮件当场丢弃）；不放广告、不用第三方统计或追踪脚本；不出售、不出租你的数据；不拿你的数据训练模型。</p>
+        <p>Cookie：只有一个登录用的 Cookie（30 天有效，网页脚本读不到）。浏览器本地还存一个深浅色偏好。</p>
+
+        <h2>3. 数据交给了谁</h2>
+        <table>
+          <tr><th>Cloudflare</th><td>托管网站、收信（Email Routing）、发信（登录验证码和邮件提醒，Email Service）、存数据（D1 数据库，北美区域）、登录时的人机验证（Turnstile，会收集设备与浏览器信号）。邮件提醒只发到你的登录邮箱，里面有这件事的时间、链接、考试码和你的备注。</td></tr>
+          <tr><th>DeepSeek（深度求索）</th><td>只在你开着 AI 时（默认开）。AI 摘取信息：每封转发来的信，发件域名、标题和正文前 4,000 字会发给 DeepSeek 的接口；AI 面试准备会发相关邮件和你的简历文字；一句话添加会发你写的那句话。<strong>按 DeepSeek 的隐私政策，数据在中华人民共和国境内处理和存储。</strong>我们无法控制 DeepSeek 如何保存这些数据。</td></tr>
+          <tr><th>你的日历应用</th><td>只有你订阅了日历时，苹果 / Google 日历才会通过订阅链接读取你的日程。</td></tr>
+        </table>
+        <p>如果你不希望邮件内容交给 DeepSeek，在「设置 → AI 与简历」里关掉 AI：之后新来的信只用规则解析（时间照样算，公司名可能认不出），一句话添加不认公司名，面试准备不可用。关掉之前已经发出去的内容，我们无法从 DeepSeek 收回。</p>
+
+        <h2>4. 你的权利</h2>
+        <ul>
+          <li><strong>查看：</strong>存下的所有内容都在看板上能看到，包括每封信的原文和判断依据。</li>
+          <li><strong>删除一封：</strong>在「邮件」里删除，再在回收站「彻底删除」。</li>
+          <li><strong>删除账号：</strong>「设置 → 数据与账号 → 删除我的账号和数据」，立即生效，只删你的，不影响别人。</li>
+          <li><strong>关掉 AI：</strong>「设置 → AI 与简历」，随时开关。</li>
+          <li><strong>关掉邮件提醒：</strong>「设置 → 日历与提醒」，随时开关。</li>
+          <li><strong>停止使用：</strong>关掉你邮箱里的自动转发（Gmail 的转发过滤器、QQ 的收信规则、163 的自动转发等），就不会再有新信进来。</li>
+          <li><strong>导出：</strong>暂时没有导出按钮，需要的话写信联系我们。</li>
+        </ul>
+        <p><strong>关于备份：</strong>数据库会自动保留最近 30 天的历史版本，用于出故障时恢复。所以你删除的数据最多还会在备份里留 30 天，之后彻底消失。</p>
+
+        <h2>5. 安全</h2>
+        <p>全程 HTTPS；登录要验证码和人机验证，并限制尝试次数；所有数据都要登录才能读取；密钥不写在代码里；系统每 6 小时自检一次。但没有任何系统能保证绝对安全。万一发生数据泄露，我们会在发现后 72 小时内发邮件告诉你：发生了什么、影响了哪些数据、你可以做什么。</p>
+
+        <h2>6. 使用条款</h2>
+        <ul>
+          <li><strong>以原邮件为准。</strong>系统会尽力读对时间和时区，拿不准时会标出来，但仍可能读错。重要的笔试、面试，请以招聘方的原邮件为准，并自己核对一次。因读错导致的错过，我们无法承担责任。</li>
+          <li>只转发你自己的招聘邮件，不要转发别人的信。一人一个账号。</li>
+          <li>内测期间账号数量有上限；为了控制成本，每人每天的 AI 调用次数也有上限，用完当天只用规则解析，第二天恢复。</li>
+          <li>内测期内功能可能调整。如果要停止服务，我们会至少提前 30 天通知，留出时间让你导出或删除数据。</li>
+          <li>本政策有变动时，会在这里更新日期，重要变化会邮件通知。</li>
+        </ul>
+
+        <p class="meta" style="margin-top: 28px">本页由开发者自行撰写，尚未经律师审阅。</p>
+      </div>
+    </main>
+  </body>
+</html>

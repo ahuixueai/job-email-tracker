@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, CalendarDays, CircleHelp, House, ListChecks, Mail, Search, Settings, Table2, X } from "lucide-react";
 import { AgendaView, PendingView } from "@/components/demo/AgendaView";
+import { BrandMark } from "@/components/demo/BrandMark";
 import type { AgendaActions } from "@/components/demo/AgendaView";
 import { ApplicationsView } from "@/components/demo/ApplicationsView";
 import type { ApplicationActions } from "@/components/demo/ApplicationsView";
@@ -449,11 +450,21 @@ export function Board({
   }, [prepare, samples, results, nowMs, viewerTimeZone, commit]);
 
   return (
-    <div className="grid gap-x-8 gap-y-4 pt-8 md:grid-cols-[10rem_1fr]">
-      <aside className="min-w-0">
-        <p className="text-xs tracking-widest text-ink-faint">JOB COMMAND CENTER</p>
-        <nav aria-label="视图" className="mt-4">
-          <ul className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
+    // 外壳：电脑上导航是贴最左边、占满整个高度的竖栏（滚动时不动），右边内容铺满；手机上导航变成顶部一排
+    <div className="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]" data-shell>
+      <aside
+        data-nav-rail
+        className="min-w-0 border-b border-hairline bg-surface px-4 pt-4 pb-3 text-ink md:sticky md:top-0 md:flex md:h-dvh md:flex-col md:overflow-y-auto md:border-r md:border-b-0 md:px-3 md:pt-6 md:pb-5"
+      >
+        <div className="flex items-center gap-2.5 px-1 md:px-2">
+          <BrandMark size={34} />
+          <span className="flex flex-col leading-tight">
+            <span className="text-[17px] font-bold tracking-[0.04em] text-ink">准点</span>
+            <span className="text-[11px] text-ink-faint">InterviewTrack</span>
+          </span>
+        </div>
+        <nav aria-label="视图" className="mt-4 md:mt-7">
+          <ul className="flex gap-1 overflow-x-auto pb-1 md:flex-col md:gap-0.5 md:overflow-visible md:pb-0">
             {tabs.map((tab) => (
               <li key={tab.id} className="shrink-0 md:shrink">
                 <button
@@ -465,16 +476,17 @@ export function Board({
                   }}
                   aria-current={view === tab.id ? "page" : undefined}
                   data-view-tab={tab.id}
-                  className={
-                    view === tab.id
-                      ? "flex w-full items-center gap-2 rounded-lg bg-brand-soft px-3 py-2 text-sm font-medium text-on-brand-soft"
-                      : "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-soft hover:bg-raised"
-                  }
+                  className={`relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm whitespace-nowrap md:py-2.5 ${
+                    view === tab.id ? "bg-brand-soft font-semibold text-on-brand-soft" : "text-ink-soft hover:bg-raised hover:text-ink"
+                  }`}
                 >
+                  {view === tab.id ? (
+                    <span aria-hidden className="absolute top-2 bottom-2 left-0 hidden w-[3px] rounded-full bg-[var(--jcc-rail-mark)] md:block" />
+                  ) : null}
                   {tab.icon}
                   {VIEW_TITLE[tab.id]}
                   {tab.count !== null ? (
-                    <span className="tabular ml-auto pl-2 text-xs">{tab.count}</span>
+                    <span className={`tabular ml-auto pl-2 text-xs ${view === tab.id ? "" : "text-ink-faint"}`}>{tab.count}</span>
                   ) : null}
                 </button>
               </li>
@@ -482,13 +494,13 @@ export function Board({
           </ul>
         </nav>
         {/* 手机上侧边栏变成顶部一排，底部这些（刷新、退出等）放在那一排下面，不能藏起来 */}
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 md:mt-4 md:flex-col md:items-start" data-sidebar-footer>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 px-1 md:mt-auto md:flex-col md:items-start md:border-t md:border-hairline md:px-2 md:pt-4" data-sidebar-footer>
           {sidebarFooter}
         </div>
       </aside>
 
       {/* 底部留白：撤销提示浮在最下面，滚到底也不挡住最后一行 */}
-      <section className="min-w-0 pb-20" data-view={view}>
+      <section className="min-w-0 px-4 pt-6 pb-20 sm:px-6 md:px-8 md:pt-8 xl:px-10" data-view={view}>
         {banner}
         <header className="pb-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

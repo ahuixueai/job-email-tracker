@@ -4,9 +4,8 @@ import { calendarToken, handleCalendar } from "../src/calendar.js";
 import { handleIncoming } from "../src/inbox.js";
 import type { IncomingMail } from "../src/inbox.js";
 import type { Env } from "../src/types.js";
-import { fakeDb } from "./fakeDb.js";
-
-const ME = "me@gmail.example";
+import { ME, ownerSetting } from "./helpers.js";
+import { testDb } from "./testDb.js";
 const NOW = Date.parse("2026-10-13T04:00:00Z");
 const PASSWORD = "test-board-password";
 
@@ -25,8 +24,8 @@ function mail(id: string, subject: string, text: string): IncomingMail {
 }
 
 async function setup() {
-  const fake = fakeDb();
-  const env: Env = { DB: fake.db, ALLOWED_FORWARDERS: ME, BOARD_PASSWORD: PASSWORD, OWNER_EMAIL: "owner@example.com" };
+  const fake = testDb();
+  const env: Env = { DB: fake.db, ALLOWED_FORWARDERS: ME, BOARD_PASSWORD: PASSWORD, OWNER_EMAIL: "owner@example.com", INBOX_DOMAIN: "my.example" };
   let n = 0;
   await handleIncoming(mail("a", "【星河科技】在线笔试通知", "考试时间：10月20日 19:00-20:40（北京时间）"), env, NOW, () => `id-${++n}`);
   await handleIncoming(mail("b", "【北辰】面试邀请", "面试时间：10月21日 14:00（北京时间）"), env, NOW, () => `id-${++n}`);
@@ -43,7 +42,7 @@ describe("日历订阅", () => {
   });
 
   it("口令对：返回日程里有时刻的事；删掉的信不再出现；升级前的旧链接（由密码算出的）照常能用", async () => {
-    const { env, settings } = await setup();
+    const { env } = await setup();
     const token = await calendarToken(PASSWORD);
     const res = await handleCalendar(new Request(`https://board.example/cal/${token}.ics`), env, NOW);
     expect(res.status).toBe(200);
@@ -54,7 +53,7 @@ describe("日历订阅", () => {
     expect(ics).toContain("DTSTART:20261021T060000Z");
     expect(ics.split("BEGIN:VEVENT")).toHaveLength(3);
 
-    settings.set("edits", { value: JSON.stringify({ version: 1, deletedEmails: { "id-1": 1 } }), updated_at: "x" });
+    await ownerSetting(env, "edits", JSON.stringify({ version: 1, deletedEmails: { "id-1": 1 } }));
     const after = await (await handleCalendar(new Request(`https://board.example/cal/${token}.ics`), env, NOW)).text();
     expect(after).not.toContain("DTSTART:20261020T110000Z");
     expect(after).toContain("DTSTART:20261021T060000Z");
@@ -91,19 +90,19 @@ describe("日历订阅", () => {
     const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]!;
     const token = await calendarToken(PASSWORD);
     const ics = async () => (await handleCalendar(new Request(`https://board.example/cal/${token}.ics`), env, NOW)).text();
-    expect(await ics()).toContain("TRIGGER:-PT1H");
+    expect(await ics()).toContain("TRIGGER:-PT30M");
 
     const put = (body: unknown) =>
       handleApi(new Request("https://board.example/api/prefs", { method: "PUT", headers: { cookie }, body: JSON.stringify(body) }), env, NOW);
-    const saved = (await (await put({ calendar: { fixedAlarm: 30, deadlineAlarm: null } })).json()) as { prefs: unknown };
-    expect(saved.prefs).toEqual({ version: 1, calendar: { fixedAlarm: 30, deadlineAlarm: null } });
+    const saved = (await (await put({ calendar: { fixedAlarm: 60, deadlineAlarm: null } })).json()) as { prefs: unknown };
+    expect(saved.prefs).toEqual({ version: 1, calendar: { fixedAlarm: 60, deadlineAlarm: null, emailReminders: true }, timeZones: { home: null, job: null }, deviceZone: null });
     const after = await ics();
-    expect(after).toContain("TRIGGER:-PT30M");
-    expect(after).not.toContain("TRIGGER:-PT1H");
+    expect(after).toContain("TRIGGER:-PT1H");
+    expect(after).not.toContain("TRIGGER:-PT30M");
 
     await put({ calendar: { fixedAlarm: 7, deadlineAlarm: "x" } });
     const got = (await (await handleApi(new Request("https://board.example/api/prefs", { headers: { cookie } }), env, NOW)).json()) as { prefs: unknown };
-    expect(got.prefs).toEqual({ version: 1, calendar: { fixedAlarm: 30, deadlineAlarm: null } });
+    expect(got.prefs).toEqual({ version: 1, calendar: { fixedAlarm: 60, deadlineAlarm: null, emailReminders: true }, timeZones: { home: null, job: null }, deviceZone: null });
     expect((await handleApi(new Request("https://board.example/api/prefs"), env, NOW)).status).toBe(401);
   });
 });

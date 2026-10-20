@@ -1,10 +1,16 @@
 import {
   codeSender,
   devInsecure,
+  effectiveForwarders,
   ensureOwner,
+  inboxAddress,
+  MAX_EXTRA_FORWARDERS,
   normalizeEmail,
+  registrationOpen,
   requestCode,
   resetCalendarToken,
+  setAiEnabled,
+  setForwarders,
   turnstileChecker,
   userById,
   verifyCode,
@@ -21,13 +27,15 @@ import {
   sessionUser,
   signingSecret,
 } from "./auth.js";
-import { parseAllowList } from "./mail.js";
 import { parsePrefs } from "../../web/lib/demo/boardPrefs";
-import { loadPrefs } from "./calendar.js";
+import { aiDailyLimit, aiUsageToday } from "./ai.js";
+import { deleteUserSetting, getUserSetting, loadPrefs, putUserSetting } from "./store.js";
 import { loadResume, prepare, resumeToStore } from "./prepare.js";
 import { quickAdd } from "./quickAdd.js";
 import { importEmail } from "./inbox.js";
-import { reparseBatch } from "./reparse.js";
+import { reparseBatch, retryModelBatch } from "./reparse.js";
+import { findProblems, sendAlert } from "./monitor.js";
+import { DELETE_CONFIRM_TEXT, deleteUserData } from "./privacy.js";
 import type { Env } from "./types.js";
 
 /** 存手动操作的上限。正常用一年也到不了这个量级，超了多半是出错了。 */
@@ -61,17 +69,23 @@ const fail = (status: number, message: string) => json({ error: message }, statu
  * - POST /api/auth/verify {email, code}    → 验证码对了就设置 cookie
  * - POST /api/login      {password, turnstile} → 备用：作者账号用密码登录
  * - POST /api/logout                      → 清掉 cookie
- * - GET  /api/session                     → 登录的是谁；允许转信进来的地址
+ * - POST /api/account/delete {confirm}    → 删除我的账号和全部数据（要手打「删除全部数据」），同时退出登录
+ * - PUT  /api/account/forwarders {list}   → 除登录邮箱外，还允许哪些邮箱转信进来（最多 3 个）
+ * - PUT  /api/account/ai {enabled}        → 用不用 AI（关掉只用规则）
+ * - GET  /api/monitor · POST /api/monitor/test → 现在有没有问题 / 发一封测试提醒（只有作者账号）
+ * - GET  /api/session                     → 登录的是谁、收信地址、允许转信的邮箱、AI 开关与今天的用量
  * - GET  /api/calendar · POST /api/calendar/reset → 日历订阅链接 / 换一把新口令
  * - GET  /api/emails                      → 收到的邮件与解析结论（最新的在前）
  * - DELETE /api/emails/:id               → 彻底删除一封信（必须先在看板上删进回收站）
  * - GET  /api/notices                     → Gmail 转发验证信等提醒
+ * - DELETE /api/notices/:id              → 转发确认做完了，删掉这条提醒
  * - GET  /api/edits / PUT /api/edits      → 你在看板上的手动操作
  * - GET/PUT /api/prefs                  → 看板偏好（日历提醒提前量…），和「你的修改」分开存
  * - GET/PUT/DELETE /api/resume          → 你的简历（只存文字）
  * - POST /api/prepare   {company,…,emails} → AI 面试准备：来信 + 简历 → 准备要点（不落库）
  * - POST /api/quick-add {text}            → 一句话添加：模型认出的公司、岗位、类型建议（时间由浏览器里的规则算）
- * - POST /api/reparse    {after}           → 按现在的规则重判已存的邮件（一批 10 封，scripts/reparse.mjs 用）
+ * - POST /api/reparse    {after}           → 按现在的规则重判已存的邮件（一批 10 封；改求职地后看板自己调）
+ * - POST /api/reparse    {after, retryModel: true} → 收信时模型没响应的信，重新调用模型摘一遍（一批 3 封）
  * - POST /api/import     {from, subject, body, receivedAtUtc} → 导入一封旧邮件（scripts/import-gmail.mjs 用）
  */
 /** 测试里替换掉的外部依赖：Turnstile 校验、发验证码。生产用默认的。 */
@@ -113,6 +127,7 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
     return json({
       turnstileSiteKey: insecure ? null : (env.TURNSTILE_SITE_KEY ?? null),
       passwordLogin: (env.BOARD_PASSWORD ?? "").length > 0,
+      registration: registrationOpen(env),
       devMode: insecure,
     });
   }
@@ -132,6 +147,7 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
       const result = await requestCode(env, email, ip, nowMs, sender, insecure);
       if (result.kind === "cooldown") return json({ error: `请 ${result.retryAfterSec} 秒后再发`, retryAfter: result.retryAfterSec }, 429);
       if (result.kind === "too_many") return fail(429, "发得太频繁了，请一小时后再试");
+      if (result.kind === "full") return fail(403, "内测名额已满，暂时不能注册新账号");
       return json({ ok: true, ...(result.devCode ? { devCode: result.devCode } : {}) });
     } catch (error) {
       console.log(JSON.stringify({ loginCodeSendFailed: error instanceof Error ? (error as Error & { code?: string }).code ?? error.message : "unknown" }));
@@ -178,9 +194,56 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
   const user = userId === null ? null : await userById(env, userId);
   if (user === null) return fail(401, "请先登录");
 
-  // 登录的是谁；顺带告诉页面只收哪些地址转来的信（「邮件」页的教程里要写明）
+  // 登录的是谁、收信地址、只收哪些邮箱转来的信、AI 开关与今天的用量（教程和设置页要用）
   if (path === "/api/session" && request.method === "GET") {
-    return json({ ok: true, user: { email: user.email, role: user.role }, forwarders: parseAllowList(env.ALLOWED_FORWARDERS) });
+    return json({
+      ok: true,
+      user: { email: user.email, role: user.role },
+      inbox: inboxAddress(env, user),
+      forwarders: effectiveForwarders(env, user),
+      extraForwarders: user.forwarders.split(",").filter((s) => s.includes("@")),
+      maxExtraForwarders: MAX_EXTRA_FORWARDERS,
+      ai: { enabled: user.ai_enabled !== 0, usedToday: await aiUsageToday(env, user.id, nowMs), dailyLimit: user.role === "owner" ? null : aiDailyLimit(env) },
+    });
+  }
+
+  // 除登录邮箱外，还允许哪些邮箱转信进来（比如登录用的是学校邮箱，转信用的是 Gmail）
+  if (path === "/api/account/forwarders" && request.method === "PUT") {
+    const body = (await request.json().catch(() => ({}))) as { list?: unknown };
+    const result = await setForwarders(env, user.id, body.list);
+    return typeof result === "string" ? fail(400, result) : json({ ok: true, extraForwarders: result });
+  }
+
+  // AI 开关：关掉之后新来的信只用规则解析，一句话添加和面试准备也不可用
+  if (path === "/api/account/ai" && request.method === "PUT") {
+    const body = (await request.json().catch(() => ({}))) as { enabled?: unknown };
+    if (typeof body.enabled !== "boolean") return fail(400, "格式不对");
+    await setAiEnabled(env, user.id, body.enabled);
+    return json({ ok: true, enabled: body.enabled });
+  }
+
+  // 删除我的账号和全部数据：立即生效，顺带退出登录。要手打确认语，防手滑、防被诱导点一下就删
+  if (path === "/api/account/delete" && request.method === "POST") {
+    const body = (await request.json().catch(() => ({}))) as { confirm?: unknown };
+    if (body.confirm !== DELETE_CONFIRM_TEXT) return fail(400, `请输入「${DELETE_CONFIRM_TEXT}」确认`);
+    await deleteUserData(env, user);
+    return json({ ok: true }, 200, { "set-cookie": CLEAR_SESSION_COOKIE });
+  }
+
+  // 收信监控是系统级的（所有人的收信情况），只给作者看
+  if (path.startsWith("/api/monitor") && user.role !== "owner") return fail(403, "只有作者账号能看");
+
+  // 收信监控：现在有没有问题（设置页显示）；发一封测试提醒，确认提醒真的能收到
+  if (path === "/api/monitor" && request.method === "GET") {
+    return json({ problems: await findProblems(env, nowMs), alertTo: env.OWNER_EMAIL ?? null });
+  }
+  if (path === "/api/monitor/test" && request.method === "POST") {
+    try {
+      const sent = await sendAlert(env, "准点提醒：测试", ["这是一封测试提醒。收到它，说明出问题时你能收到看板的自动提醒。"]);
+      return sent ? json({ ok: true }) : fail(503, "还没配置发信（EMAIL）或登录邮箱（OWNER_EMAIL）");
+    } catch {
+      return fail(502, "发信失败：确认这个邮箱已在 Cloudflare Email Routing 里验证过");
+    }
   }
 
   // 日历订阅链接：每人一把口令，和登录无关；泄露了就换一把
@@ -194,8 +257,10 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
 
   if (path === "/api/emails" && request.method === "GET") {
     const rows = await env.DB.prepare(
-      "SELECT id, received_at, stored_at, via, from_addr, subject, body, status, outcome, model, error FROM emails ORDER BY received_at DESC LIMIT 1000",
-    ).all();
+      "SELECT id, received_at, stored_at, via, from_addr, subject, body, status, outcome, model, error FROM emails WHERE user_id = ? ORDER BY received_at DESC LIMIT 1000",
+    )
+      .bind(user.id)
+      .all();
     return json({ emails: rows.results });
   }
 
@@ -203,27 +268,36 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
   if (purge && request.method === "DELETE") {
     const id = decodeURIComponent(purge[1] ?? "");
     // 只删回收站里的：防止一个错误的请求直接删掉还在用的信
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'edits'").first<{ value: string }>();
+    const edits = await getUserSetting(env, user.id, "edits");
     let trashed = false;
     try {
-      const deleted = row ? (JSON.parse(row.value) as { deletedEmails?: Record<string, unknown> }).deletedEmails : undefined;
+      const deleted = edits !== null ? (JSON.parse(edits) as { deletedEmails?: Record<string, unknown> }).deletedEmails : undefined;
       trashed = typeof deleted === "object" && deleted !== null && id in deleted;
     } catch {
       trashed = false;
     }
     if (!trashed) return fail(409, "这封信不在回收站里：先在看板上删除，再彻底删除");
-    await env.DB.prepare("DELETE FROM emails WHERE id = ?").bind(id).run();
+    await env.DB.prepare("DELETE FROM emails WHERE id = ? AND user_id = ?").bind(id, user.id).run();
+    return json({ ok: true });
+  }
+
+  // 转发确认做完了：这条提醒删掉，不再显示（只删自己的）
+  const notice = /^\/api\/notices\/([^/]+)$/.exec(path);
+  if (notice && request.method === "DELETE") {
+    await env.DB.prepare("DELETE FROM notices WHERE id = ? AND user_id = ?").bind(decodeURIComponent(notice[1] ?? ""), user.id).run();
     return json({ ok: true });
   }
 
   if (path === "/api/notices" && request.method === "GET") {
-    const rows = await env.DB.prepare("SELECT id, kind, received_at, subject, body FROM notices ORDER BY received_at DESC LIMIT 5").all();
+    const rows = await env.DB.prepare("SELECT id, kind, received_at, subject, body FROM notices WHERE user_id = ? ORDER BY received_at DESC LIMIT 5")
+      .bind(user.id)
+      .all();
     return json({ notices: rows.results });
   }
 
   if (path === "/api/edits" && request.method === "GET") {
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'edits'").first<{ value: string }>();
-    return json({ edits: row ? JSON.parse(row.value) : null });
+    const edits = await getUserSetting(env, user.id, "edits");
+    return json({ edits: edits !== null ? JSON.parse(edits) : null });
   }
 
   if (path === "/api/edits" && request.method === "PUT") {
@@ -238,16 +312,12 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
     if (typeof parsed !== "object" || parsed === null || (parsed as { version?: unknown }).version !== 1) {
       return fail(400, "数据形状不对");
     }
-    await env.DB.prepare(
-      "INSERT INTO settings (key, value, updated_at) VALUES ('edits', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-      .bind(text, new Date(nowMs).toISOString())
-      .run();
+    await putUserSetting(env, user.id, "edits", text, new Date(nowMs).toISOString());
     return json({ ok: true });
   }
 
   if (path === "/api/prefs" && request.method === "GET") {
-    return json({ prefs: await loadPrefs(env) });
+    return json({ prefs: await loadPrefs(env, user.id) });
   }
 
   if (path === "/api/prefs" && request.method === "PUT") {
@@ -260,17 +330,13 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
       return fail(400, "不是合法的 JSON");
     }
     // 只存认得的字段、认得的取值：存进去的永远是一份合法的偏好；没给或乱给的字段保持现在的值
-    const prefs = parsePrefs(parsed, await loadPrefs(env));
-    await env.DB.prepare(
-      "INSERT INTO settings (key, value, updated_at) VALUES ('prefs', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-      .bind(JSON.stringify(prefs), new Date(nowMs).toISOString())
-      .run();
+    const prefs = parsePrefs(parsed, await loadPrefs(env, user.id));
+    await putUserSetting(env, user.id, "prefs", JSON.stringify(prefs), new Date(nowMs).toISOString());
     return json({ prefs });
   }
 
   if (path === "/api/resume" && request.method === "GET") {
-    const resume = await loadResume(env);
+    const resume = await loadResume(env, user.id);
     return json({ resume });
   }
 
@@ -285,16 +351,12 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
     }
     const resume = resumeToStore(parsed, nowMs);
     if (typeof resume === "string") return fail(400, resume);
-    await env.DB.prepare(
-      "INSERT INTO settings (key, value, updated_at) VALUES ('resume', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-      .bind(JSON.stringify(resume), resume.updatedAt)
-      .run();
+    await putUserSetting(env, user.id, "resume", JSON.stringify(resume), resume.updatedAt);
     return json({ resume });
   }
 
   if (path === "/api/resume" && request.method === "DELETE") {
-    await env.DB.prepare("DELETE FROM settings WHERE key = 'resume'").run();
+    await deleteUserSetting(env, user.id, "resume");
     return json({ ok: true });
   }
 
@@ -307,19 +369,21 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
     } catch {
       return fail(400, "不是合法的 JSON");
     }
-    const result = await prepare(env, parsed);
+    const result = await prepare(env, user, nowMs, parsed);
     return result.ok ? json({ prep: result.prep, usedResume: result.usedResume }) : fail(result.status, result.error);
   }
 
   if (path === "/api/quick-add" && request.method === "POST") {
     const body = (await request.json().catch(() => ({}))) as { text?: unknown };
-    const result = await quickAdd(env, body.text);
+    const result = await quickAdd(env, user, nowMs, body.text);
     return result.ok ? json({ model: result.model, warning: result.warning ?? null }) : fail(result.status, result.error);
   }
 
   if (path === "/api/reparse" && request.method === "POST") {
-    const body = (await request.json().catch(() => ({}))) as { after?: unknown };
-    return json(await reparseBatch(env, typeof body.after === "string" && body.after.length > 0 ? body.after : null));
+    const body = (await request.json().catch(() => ({}))) as { after?: unknown; retryModel?: unknown };
+    const after = typeof body.after === "string" && body.after.length > 0 ? body.after : null;
+    // retryModel：只重做收信时模型没响应的那几封，这次真的调用模型
+    return json(body.retryModel === true ? await retryModelBatch(env, user, after, nowMs) : await reparseBatch(env, user.id, after));
   }
 
   if (path === "/api/import" && request.method === "POST") {
@@ -335,6 +399,7 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
     const result = await importEmail(
       { from: str("from"), subject: str("subject"), body: str("body"), receivedAtUtc: str("receivedAtUtc") },
       env,
+      user,
       nowMs,
       () => crypto.randomUUID(),
     );
@@ -343,39 +408,4 @@ export async function handleApi(request: Request, env: Env, nowMs: number, deps:
   }
 
   return fail(404, "没有这个接口");
-}
-
-/**
- * 你在看板上确认过的「公司 → 时区」。收信程序处理新邮件时当作时区线索。
- * 读不到、读坏了都返回空表——宁可不用这条线索，也不能让收信因此失败。
- */
-export async function loadCompanyZones(env: Env): Promise<Record<string, string>> {
-  try {
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'edits'").first<{ value: string }>();
-    if (!row) return {};
-    const zones = (JSON.parse(row.value) as { companyZones?: unknown }).companyZones;
-    if (typeof zones !== "object" || zones === null) return {};
-    const out: Record<string, string> = {};
-    for (const [company, zone] of Object.entries(zones)) {
-      if (typeof zone === "string" && zone.includes("/")) out[company] = zone;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * 你在看板上标成「广告」的发件地址（小写）。收信时直接丢弃，不调模型。
- * 读不到、读坏了返回空表——宁可多收一封广告，也不能让收信因此失败。
- */
-export async function loadBlockedSenders(env: Env): Promise<string[]> {
-  try {
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'edits'").first<{ value: string }>();
-    if (!row) return [];
-    const list = (JSON.parse(row.value) as { blockedSenders?: unknown }).blockedSenders;
-    return Array.isArray(list) ? list.filter((s): s is string => typeof s === "string").map((s) => s.toLowerCase()) : [];
-  } catch {
-    return [];
-  }
 }

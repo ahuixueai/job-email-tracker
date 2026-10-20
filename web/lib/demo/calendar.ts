@@ -87,7 +87,7 @@ export function buildIcs(
       fold(`DESCRIPTION:${escapeText(description)}`),
       `URL:${boardUrl}`,
     );
-    // 还没做、还没到的才提醒；提前多久按你在设置里选的（默认准点开始前 1 小时、截止前 1 天），选了「不提醒」就不放
+    // 还没做、还没到的才提醒；提前多久按你在设置里选的（默认准点开始前 30 分钟、截止前 1 天），选了「不提醒」就不放
     const lead = deadline ? alarms.deadlineAlarm : alarms.fixedAlarm;
     if (!done && at > nowMs && lead !== null) {
       lines.push(

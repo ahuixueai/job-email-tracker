@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { BrandMark } from "@/components/demo/BrandMark";
 
 /**
- * 登录页：邮箱收 6 位验证码登录；作者账号可以用密码登录（备用）。
+ * 登录页：邮箱收 6 位验证码登录（新邮箱验证后自动建账号）；作者账号可以用密码登录（备用）。
  * 发码、密码登录之前都要过 Cloudflare Turnstile（防机器人，多数时候不用点）。
  */
 
@@ -70,6 +71,8 @@ interface AuthConfig {
   turnstileSiteKey: string | null;
   passwordLogin: boolean;
   devMode: boolean;
+  /** 新邮箱能不能注册（内测：开放注册，名额满了就关）。 */
+  registration?: boolean;
 }
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
@@ -176,11 +179,17 @@ export function Login({ onDone }: { onDone: () => void }) {
         className="w-full max-w-sm rounded-card border border-hairline bg-surface p-6 shadow-card"
         data-login={mode === "password" ? "password" : step}
       >
-        <h1 className="text-lg font-semibold text-ink">求职看板</h1>
+        <div className="flex items-center gap-3">
+          <BrandMark size={40} />
+          <div>
+            <h1 className="text-lg leading-tight font-bold tracking-[0.04em] text-ink">准点</h1>
+            <p className="text-xs text-ink-faint">InterviewTrack</p>
+          </div>
+        </div>
 
         {mode === "password" ? (
           <>
-            <p className="mt-1 text-sm text-ink-soft">备用登录：输入你设置的看板密码。</p>
+            <p className="mt-5 text-sm text-ink-soft">备用登录：输入你设置的看板密码。</p>
             <label className="mt-5 block text-sm text-ink-soft" htmlFor="password">
               密码
             </label>
@@ -192,7 +201,15 @@ export function Login({ onDone }: { onDone: () => void }) {
           </>
         ) : step === "email" ? (
           <>
-            <p className="mt-1 text-sm text-ink-soft">输入邮箱，我们发一个 6 位验证码给你。</p>
+            <p className="mt-5 text-sm text-ink-soft">输入邮箱，我们发一个 6 位验证码给你。</p>
+            <p className="mt-3 rounded-lg border border-accent bg-accent-soft px-3 py-2 text-sm text-ink" data-gmail-tip>
+              <strong className="font-semibold">推荐用你投简历的 Gmail 登录</strong>：Gmail 设置转发最简单，粘贴一段就好，也最不容易漏信。QQ、163 等也能用，设置会多几步。
+            </p>
+            {config.registration ? (
+              <p className="mt-2 text-xs text-ink-faint" data-registration-open>
+                第一次用？同样输入邮箱就行，验证后自动建账号（内测中，名额有限）。
+              </p>
+            ) : null}
             <label className="mt-5 block text-sm text-ink-soft" htmlFor="email">
               邮箱
             </label>
@@ -265,6 +282,12 @@ export function Login({ onDone }: { onDone: () => void }) {
             {mode === "password" ? "用邮箱验证码登录" : "收不到验证码？用密码登录（备用）"}
           </button>
         ) : null}
+        <p className="mt-4 text-center text-xs text-ink-faint">
+          {config.registration ? "登录或注册即表示同意" : "登录即表示同意"}
+          <a href="/privacy" target="_blank" rel="noopener" data-privacy-link className="underline underline-offset-2 hover:text-ink-soft">
+            隐私政策与使用条款
+          </a>
+        </p>
       </form>
     </div>
   );

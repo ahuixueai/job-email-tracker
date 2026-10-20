@@ -45,6 +45,20 @@ describe("认人：只收从自己 Gmail 转过来的信", () => {
     expect(admit(ME, ME, [], []).kind).toBe("reject");
   });
 
+  it("QQ 收信规则自动转发：信封发件人是「QQ号+auto_=收信地址@qq.com」，没有 X-Forwarded-For（10/16 实测）", () => {
+    const qq = ["10001@qq.com"];
+    expect(admit("10001+auto_=u-k3x9q2m7pz=interviewtrack.me@qq.com", "HR <noreply@hr.example>", [{ key: "x-qq-auto-fwd", value: "1" }], qq)).toEqual({ kind: "job", via: "auto" });
+    expect(admit("other+auto_=x@qq.com", "HR <noreply@hr.example>", [], qq).kind).toBe("reject");
+    expect(admit("10001+x@evil.example", "HR <noreply@hr.example>", [], qq).kind).toBe("reject");
+  });
+
+  it("网易来信分类转发：信封发件人「auto_用户名+收信地址@163.com」，或 Resent-From（10/16 实测）", () => {
+    const n = ["alice2026@163.com"];
+    expect(admit("auto_alice2026+u-b7c2d9e4f1=interviewtrack.me@163.com", "HR <noreply@hr.example>", [], n)).toEqual({ kind: "job", via: "auto" });
+    expect(admit("bounce@x.example", "HR <noreply@hr.example>", [{ key: "Resent-From", value: "alice2026@163.com" }], n)).toEqual({ kind: "job", via: "auto" });
+    expect(admit("auto_someone+u-x=interviewtrack.me@163.com", "HR <noreply@hr.example>", [], n).kind).toBe("reject");
+  });
+
   it("允许列表的写法：逗号或空格分隔，忽略不像地址的", () => {
     expect(parseAllowList(" A@x.example, b@y.example  junk ")).toEqual(["a@x.example", "b@y.example"]);
     expect(parseAllowList(undefined)).toEqual([]);
@@ -58,6 +72,13 @@ describe("正文", () => {
     expect(htmlToText(html)).toBe("面试时间：10月20日 14:00\n地点\n线上\nA B");
   });
 
+  it("链接留下地址：按钮文字 +（地址）；文字就是地址时不重复；只有图片的链接不留；实体还原", () => {
+    const html =
+      '<p>哑巴&lt;a@qq.example&gt; 设置了转发</p><a href="https://mail.qq.example/cgi?a=1&amp;b=2" style="x"><span>接受转发</span></a>' +
+      '<p><a href="https://exam.example/t">https://exam.example/t</a> <a href="mailto:hr@x.example">写信</a><a href="https://track.example/logo"><img src="x.png"></a></p>';
+    expect(htmlToText(html)).toBe("哑巴<a@qq.example> 设置了转发\n接受转发（https://mail.qq.example/cgi?a=1&b=2） https://exam.example/t 写信");
+  });
+
   it("有正常的纯文本就用纯文本", () => {
     expect(pickBody("正文".repeat(200), "<p>别的</p>")).toBe("正文".repeat(200));
   });
@@ -65,6 +86,10 @@ describe("正文", () => {
   it("纯文本只是一句占位提示时，改用 HTML", () => {
     const html = `<p>${"笔试通知 ".repeat(100)}</p>`;
     expect(pickBody("请使用支持 HTML 的客户端查看", html)).toContain("笔试通知");
+  });
+
+  it("纯文本里没有链接、HTML 里有：用 HTML 的（按钮地址不丢）", () => {
+    expect(pickBody("接受转发\n取消接受转发" + "。".repeat(300), '<a href="https://mail.qq.example/a">接受转发</a>')).toBe("接受转发（https://mail.qq.example/a）");
   });
 
   it("只有 HTML / 什么都没有", () => {
@@ -100,6 +125,40 @@ describe("手动转发：把原信拆出来", () => {
     expect(original?.from).toBe("HR <hr@a.example>");
     expect(original?.subject).toBe("面试邀请");
     expect(original?.body).toBe("面试时间：10月21日 10:00");
+  });
+
+  it("QQ 邮箱网页版转发（转成文字后只剩「原始邮件」一行；前面是转发人的名片）", () => {
+    const body = [
+      "小明 me@qq.example（https://wx.mail.qq.com/home/index?t=readmail_businesscard_midpage）",
+      "",
+      "原始邮件",
+      "",
+      "发件人： 携程集团(Trip.com Group) <trip-no-reply@mail.mokahr.example>",
+      "发件时间： 2026年10月12日 05:23",
+      "收件人： me <me@gmail.example>",
+      "主题： 【携程校招】今晚19:00，秋招冲刺岗位专场直播来袭！",
+      "",
+      "",
+      "你好，",
+      "秋招进度条走到这里",
+    ].join("\n");
+    expect(unwrapManualForward(body)).toEqual({
+      from: "携程集团(Trip.com Group) <trip-no-reply@mail.mokahr.example>",
+      subject: "【携程校招】今晚19:00，秋招冲刺岗位专场直播来袭！",
+      body: "你好，\n秋招进度条走到这里",
+    });
+  });
+
+  it("QQ 纯文本转发（分隔行带 &nbsp;，键后面没有空格、值后面带分号）", () => {
+    const body = "------------------&nbsp;原始邮件&nbsp;------------------\n发件人：李老师 <noreply@hr.example>;\n发件时间：2026年10月16日(星期五) 下午3:00\n收件人：me <me@gmail.example>;\n主题：管理培训生面试邀请\n\n面试日期: 2026-10-19 14:00";
+    expect(unwrapManualForward(body)).toEqual({ from: "李老师 <noreply@hr.example>", subject: "管理培训生面试邀请", body: "面试日期: 2026-10-19 14:00" });
+  });
+
+  it("Outlook（只有一条下划线）和没有分隔行、只有「发件人 … 主题」的", () => {
+    const outlook = "________________________________\nFrom: HR <hr@b.example>\nSent: Friday, October 16, 2026 3:00 PM\nTo: me@outlook.example\nSubject: Interview invitation\n\nYour interview is on Oct 20.";
+    expect(unwrapManualForward(outlook)).toMatchObject({ from: "HR <hr@b.example>", subject: "Interview invitation", body: "Your interview is on Oct 20." });
+    const bare = "\n\n发件人：HR <hr@c.example>\n发送时间：2026年10月16日\n主题：笔试通知\n\n笔试时间：10月22日";
+    expect(unwrapManualForward(bare)).toMatchObject({ from: "HR <hr@c.example>", subject: "笔试通知", body: "笔试时间：10月22日" });
   });
 
   it("不是转发的信返回 null", () => {

@@ -8,14 +8,28 @@ routes = [
   { pattern = "board.example.com", custom_domain = true }
 ]
 
+# 定时任务（UTC 时间）：收信监控每 6 小时一次，有问题给 OWNER_EMAIL 发提醒；邮件提醒每 15 分钟一次（src/index.ts 按这串分开处理）。
+[triggers]
+crons = ["17 */6 * * *", "*/15 * * * *"]
+
 [vars]
-# 只接受从这些 Gmail 转发过来的信，别人往你的收信地址乱发的邮件一律拒收，
-# 免得陌生人替你花模型调用费。多个地址用英文逗号隔开。
+# 作者账号（jobs@ 收信地址）还接受从这些 Gmail 转发过来的信，别人往收信地址乱发的邮件一律拒收，
+# 免得陌生人替你花模型调用费。多个地址用英文逗号隔开。其他用户的转信邮箱在看板「设置 → 收信」里各自管。
 # ⚠️ 换成你收招聘邮件的那个 Gmail。
 ALLOWED_FORWARDERS = "you@gmail.com"
 
-# 账号（第 1 期只有作者一个）：用这个邮箱收登录验证码。
+# 作者账号：用这个邮箱收登录验证码和监控提醒。
 OWNER_EMAIL = "you@gmail.com"
+
+# 多人内测（第 2 期）。
+# 收信地址的域名：作者是 jobs@，其他人是 u-随机口令@。Email Routing 里要开 catch-all 交给本程序。
+INBOX_DOMAIN = "example.com"
+# 开放注册：新邮箱验证后自动建账号。要停止新注册，改成 "closed" 再部署（已有账号照常用）。
+REGISTRATION = "open"
+# 最多多少个账号（含作者）。满了新邮箱会看到「内测名额已满」。
+MAX_USERS = "50"
+# 每人每天最多调用几次 AI（收信摘信息、一句话添加、面试准备各算一次）；用完当天只用规则。作者不限。
+AI_DAILY_LIMIT = "100"
 # 验证码从这个地址发出（你的域名要开着 Email Routing）。
 LOGIN_FROM = "login@example.com"
 # 防机器人（Cloudflare Turnstile）的站点密钥，公开的，建好站点后去掉下一行的 # 填进去；私密的那把用 `npx wrangler secret put TURNSTILE_SECRET`。
@@ -25,7 +39,7 @@ LOGIN_FROM = "login@example.com"
 LLM_BASE_URL = "https://api.deepseek.com/v1"
 LLM_MODEL = "deepseek-v4-pro"
 
-# 发登录验证码。免费版只能发给在 Email Routing 里验证过的地址（第 1 期够用）；给任意邮箱发要 Workers 付费版。
+# 发登录验证码和监控提醒。免费版只能发给在 Email Routing 里验证过的地址；多人内测给任意邮箱发，要 Workers 付费版（每月 5 美元）。
 [[send_email]]
 name = "EMAIL"
 

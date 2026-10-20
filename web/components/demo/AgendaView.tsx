@@ -161,7 +161,7 @@ export function OverdueSection({
         <span className="tabular ml-2 text-xs font-normal text-ink-faint">{items.length}</span>
       </h2>
       <p className="mt-1 text-xs text-ink-faint">时间过了不会自动算完成——可能是错过了。点一下告诉看板。</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
         {[...items].reverse().map((item) => (
           <EventCard
             key={item.key}
@@ -214,7 +214,7 @@ function DoneSection({
         <span className="tabular text-xs font-normal text-ink-faint">{items.length}</span>
       </button>
       {open ? (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
           {ordered.map((item) => (
             <EventCard
               key={item.key}
@@ -304,7 +304,7 @@ export function PendingView({
               </BulkBar>
             </div>
           ) : null}
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
             {pending.map((item) => (
               <EventCard
                 key={item.key}
@@ -379,7 +379,7 @@ export function CardGrid({
   actions: AgendaActions;
 }) {
   return (
-    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-3 grid gap-3 sm:grid-cols-[repeat(auto-fill,minmax(19rem,1fr))]">
       {items.map((item) => (
         <EventCard
           key={item.key}

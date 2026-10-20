@@ -114,6 +114,7 @@ function withTime(result: DemoResult, time: ResolvedTime, viewerTimeZone: string
     dueType: time.timeKind,
     when: describeWhen(time.startUtc, time.timeZone, viewerTimeZone),
     timeZone: time.timeZone,
+    timeZoneSource: null,
     dueReason: "时间是你手动填的",
   };
 }
@@ -133,6 +134,7 @@ function manualToItem(event: ManualEvent, viewerTimeZone: string): AgendaItem {
     when: null,
     unzoned: null,
     timeZone: null,
+    timeZoneSource: null,
     confidence: null,
     confidenceReasons: [],
     dedupKey: null,

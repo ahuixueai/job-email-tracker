@@ -5,8 +5,8 @@ import { toCleanEmail } from "./rawEmail.js";
 import type { PrefilterResult } from "./prefilter.js";
 import { prefilter } from "./prefilter.js";
 import type { Extraction, LLMExtractor } from "./extract.js";
-import { validateExtraction } from "./extract.js";
-import { normalizeCompany } from "./company.js";
+import { companyFromSubject, validateExtraction } from "./extract.js";
+import { resolveCompany } from "./company.js";
 import type { EventTypeClassification } from "./eventType.js";
 import { classifyEventType } from "./eventType.js";
 import type { DueClassification } from "./dueType.js";
@@ -40,6 +40,11 @@ export interface ParseDeps {
    * 传入公司**归一化后**的标准名。查不到返回 null。
    */
   lookupCompanyRegion?: (company: string) => string | null;
+  /**
+   * 用户设置的求职地时区（IANA 名），时区推断的第 5 优先级：前四条都没有线索时才用。
+   * 不传 = 没设置，没线索的信照旧进待确认。
+   */
+  jobTimeZone?: string | null;
 }
 
 /** 岗位侧信息。不进 events 表，用于填 applications 表的 role / region。 */
@@ -115,7 +120,13 @@ function assemble(
   deps: ParseDeps,
 ): { event: ParsedEvent; application: ApplicationHint; trace: ParseTrace } {
   // ---- 1. 公司归一。排在最前面，因为时区推断的第 4 优先级要用它查台账 ----
-  const company = normalizeCompany(extraction.companyRaw ?? "", email.senderDomain);
+  // 模型摘的为主；模型超时或没摘到时，再看发件域名、发件人显示名、标题格式
+  const company = resolveCompany({
+    raw: extraction.companyRaw,
+    senderDomain: email.senderDomain,
+    senderName: email.senderName ?? "",
+    subjectName: companyFromSubject(email.subject),
+  });
 
   // ---- 2. 事件类型 ----
   const ruleType = classifyEventType(
@@ -178,6 +189,7 @@ function assemble(
     text: email.text,
     ...(email.senderDomain.length > 0 ? { senderDomain: email.senderDomain } : {}),
     ...(knownRegion !== null ? { knownCompanyRegion: knownRegion } : {}),
+    ...(deps.jobTimeZone ? { jobTimeZone: deps.jobTimeZone } : {}),
   });
 
   // ---- 4. 时间语义。timeText 是模型圈出的那一小段：只用它限定「看哪几个时刻」，

@@ -1,9 +1,9 @@
-# Job Email Tracker
+# 准点 · InterviewTrack
 
-**Turns recruiting emails into a schedule you can trust.** It reads application receipts, assessment invites, interview notices and rejections, works out *what* each one is and *when* it happens (in which time zone), and puts it on a board. When it is not sure, it says so instead of guessing.
+**Turns recruiting emails into a schedule you can trust, in your own time zone.** Built for students abroad applying to jobs back home: a Beijing 13:30 interview shows up as 01:30 where you are, the night before you get an email with the meeting link, and your calendar rings 30 minutes before. It reads application receipts, assessment invites, interview notices and rejections, works out *what* each one is and *when* it happens (in which time zone), and puts it on a board. When it is not sure, it says so instead of guessing.
 
-**Live demo:** https://job-command-center-eta-two.vercel.app
-(All companies and emails in the demo are fictional. Everything runs in the browser.)
+**Try it:** https://board.interviewtrack.me (public beta, limited seats; sign in with an email code)
+**Live demo:** https://job-command-center-eta-two.vercel.app (all companies and emails fictional; everything runs in the browser)
 
 [中文说明](./README.zh-CN.md)
 
@@ -86,52 +86,53 @@ Across all views: edit any item (the original email is never changed), undo the 
 
 The demo ships 28 synthetic emails. Thirteen are each built to exercise one specific failure mode (a fixed exam slot, a relative "within 72 hours" deadline, an "effective at" trap, an English email for an event in Hong Kong, an invite with no time zone, a reminder that must merge, and so on); the other fifteen are three weeks of ordinary history (receipts, a second-round and a final interview, an offer, rejections) so the applications table and the stats have something to show. Model output for these samples was recorded once and is replayed in the browser, so the public site makes no API calls.
 
-## The private board (`worker/`)
+## The hosted product (`worker/`)
 
-The demo is the front end only. `worker/` is the server side I run for myself on Cloudflare (Workers + D1 + Email Routing), using the same engine and the same board component:
+The demo is the front end only. `worker/` is the server side behind https://board.interviewtrack.me, on Cloudflare (Workers + D1 + Email Routing + Email Service), using the same engine and the same board component:
 
 | Feature | How |
 |---|---|
-| Real email in | Gmail forwards recruiting mail to `jobs@<your domain>`; the Worker accepts it only from allow-listed forwarders, parses it with the engine (rules + model) and stores the result in D1. Your own replies are archived, not parsed. |
-| Sign-in | Email one-time code (6 digits, 10 minutes, 5 attempts; per-email and per-IP rate limits; unknown addresses get the same answer so accounts cannot be enumerated), behind Cloudflare Turnstile. A password is kept as a fallback. Signed, HttpOnly session cookie. |
-| Calendar subscription | A per-user `.ics` feed: subscribe once in Apple or Google Calendar and it keeps updating. Reminder lead times are a setting; the link can be rotated if it leaks. |
-| AI quick add | Type one sentence ("interview with X next Tuesday 3pm"); the model extracts fragments, rules fill the form, you confirm. |
-| AI interview prep | Generates likely questions for an interview from its emails and (optionally) your résumé, written into the item's notes with a label. The résumé (PDF/Word) is converted to text in the browser. |
-| Forwarding guide | An illustrated how-to on the Emails page for setting up Gmail forwarding. |
+| Accounts | Sign in with an email one-time code (6 digits, 10 minutes, 5 attempts; per-email and per-IP rate limits; unknown addresses get the same answer so accounts cannot be enumerated), behind Cloudflare Turnstile. Open registration up to a seat cap. Every table is keyed by user; nobody sees anyone else's mail. |
+| Real email in | Each user gets a private inbox address. Gmail forwards only recruiting mail with a one-paste filter; QQ Mail, NetEase 163 and Outlook forward everything, and the Worker keeps only what looks like recruiting mail (subject, body or a known applicant-tracking sender). The rest is dropped on arrival: not stored, never sent to the model. Forwarding confirmations (Gmail codes, QQ "accept" links) appear on the board as one-click buttons. Manual forwards (including QQ's multi-message forward) are unwrapped to the original sender and time. |
+| Your time zone | You pick where you are and where you are job-hunting; times are shown in your zone with the original zone in the details. |
+| Email reminders | The evening before an interview or exam, an email with the time (yours and theirs), the link, any exam code and your notes; 24 h and 3 h before an assessment deadline unless you marked it done. |
+| Calendar subscription | A per-user `.ics` feed for Apple or Google Calendar, rings 30 minutes before by default. The link can be rotated if it leaks. |
+| AI, optional | Quick add from one sentence; interview prep from the item's emails and your résumé (converted to text in the browser). Per-user daily quota; can be switched off, in which case only rules run. |
+| Privacy | Plain-language privacy policy, delete-my-account, security headers, sign-in logs purged after 2 days, a 6-hourly health check. |
 
-Phase 1 has a single account (the owner); the tables are already keyed by user for multi-user later. Deploy steps and the security notes are in [worker/README.md](./worker/README.md) (Chinese). Before deploying, replace the placeholders in `worker/wrangler.toml` (domain, e-mail, database id) with your own.
+Deploy steps and the security notes are in [worker/README.md](./worker/README.md) (Chinese). Before deploying, replace the placeholders in `worker/wrangler.toml` (domain, e-mail, database id) with your own.
 
 ## Repository layout
 
 ```
-engine/   Parsing engine. Pure TypeScript, zero runtime dependencies. 485 tests.
-web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 163 tests.
-worker/   Cloudflare Worker: email intake, sign-in, calendar feed, AI endpoints, and the private board (Vite). 81 tests.
+engine/   Parsing engine. Pure TypeScript, zero runtime dependencies. 509 tests.
+web/      Next.js app (the demo). The engine is vendored into web/lib/tracker-core. 166 tests.
+worker/   Cloudflare Worker: email intake, accounts, reminders, calendar feed, AI endpoints, and the board (Vite). 138 tests.
 docs/     Evaluation method and numbers.
 ```
 
 ## Run it
 
-Requires Node.js 20.9 or later (developed on Node 22).
+Requires Node.js 20.9 or later; the worker tests need 22.13 or later (they use node:sqlite).
 
 ```bash
 # engine
 cd engine
 npm ci
-npm test                 # 485 tests
+npm test                 # 509 tests
 npm run check            # type-check + tests with per-file coverage threshold
 
 # web
 cd web
 npm ci
 npm run dev              # http://localhost:3000
-npm test                 # 163 tests
+npm test                 # 166 tests
 npm run check            # types + lint + tests + production build
 
-# worker (install web first: the private board reuses its components)
+# worker (install web first: the board reuses its components)
 cd worker
 npm ci
-npm run check            # types + 81 tests + board build
+npm run check            # types + 138 tests + board build (needs Node 22.13+ for node:sqlite in tests)
 ```
 
 To use a real model instead of the recorded output, any OpenAI-compatible chat endpoint works:
@@ -148,7 +149,7 @@ To score the engine on your own mailbox, see `engine/tools/eval-extract.ts` and 
 
 - **Not validated on unseen email yet.** See the note under the results table.
 - **The demo has no backend.** Manual edits there live in the browser's local storage. The server side lives in `worker/` (see above).
-- **Single account for now.** Cloudflare's free plan can only send sign-in codes to verified addresses, so the private board has one owner. Opening it to other users needs a paid sending path.
+- **Beta.** Seats are capped and the sending quota is shared between sign-in codes and reminders. "Forward everything" has been verified end to end for QQ Mail; NetEase 163 and Outlook follow the same pattern but have not been walked through yet.
 - **Promotional filtering is rule-based and in-sample.** Campus talks, live streams, job-board recommendations and "applications are open" mail are recognised from the subject line and folded; new marketing phrasings will slip through until a rule is added. The "mark as ad" button blocks a sender as a fallback.
 - **"Conditional future" mentions.** A receipt that says "you will be invited to an assessment within 24 hours" is still classified as an assessment by the rules. It is now caught by the model's veto and held for confirmation, but the rule itself is not fixed.
 - **Emails with no time-zone evidence** are held for confirmation by design, even when a human could guess the zone from the company.

@@ -164,6 +164,19 @@ export interface OpenAICompatibleConfig {
   model: string;
   /** 默认用运行时自带的 fetch。测试里注入假实现。 */
   fetchImpl?: FetchLike;
+  /**
+   * 额外的请求字段，原样并进请求体（各家自己的开关，比如 DeepSeek 的 `thinking`）。
+   * 不能覆盖 model / messages / temperature / response_format。
+   */
+  extraBody?: Record<string, unknown>;
+}
+
+/**
+ * 摘片段这种活不需要模型「深度思考」。DeepSeek 默认开着思考模式（强度 high），
+ * 一封信常常要等 25 秒以上，收信时就超时退回了纯规则。对 DeepSeek 关掉它；别家不发这个字段。
+ */
+export function fastExtraBody(baseUrl: string): Record<string, unknown> | undefined {
+  return /(^|\/\/|\.)deepseek\.com(\/|$)/i.test(baseUrl) ? { thinking: { type: "disabled" } } : undefined;
 }
 
 /**
@@ -187,6 +200,7 @@ export function openAICompatibleComplete(config: OpenAICompatibleConfig): ChatCo
         authorization: `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
+        ...(config.extraBody ?? {}),
         model: config.model,
         temperature: 0,
         response_format: { type: "json_object" },

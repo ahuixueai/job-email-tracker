@@ -1,56 +1,18 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, ChevronDown, Copy, Forward, MoreHorizontal, MoreVertical, RefreshCw, Reply, Search, Send } from "lucide-react";
-
-/** 收信地址。Cloudflare Email Routing 里配的就是它。 */
-export const INBOX_ADDRESS = "jobs@interviewtrack.me";
+import { B } from "./ForwardSetup";
+import { senderText, useSession } from "./session";
 
 /**
  * 「邮件」页顶上的图文教程：怎么把一封信发进看板。
  * 图是**示意图**（按 Gmail 的布局简化画的），不是截图——按钮位置以你自己的 Gmail 为准。
  * 只在私人看板有：演示站没有收信地址。
  */
-export interface SessionInfo {
-  /** 只收哪些地址转来的信（和收信程序同一份配置）。 */
-  forwarders: readonly string[];
-  /** 登录的是谁。 */
-  email: string | null;
-}
 
-/** 从服务端读登录信息。读到之前为 null。 */
-export function useSessionInfo(): SessionInfo | null {
-  const [info, setInfo] = useState<SessionInfo | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/session", { credentials: "same-origin" })
-      .then((res) => res.json() as Promise<{ forwarders?: unknown; user?: { email?: unknown } }>)
-      .then((body) => {
-        if (!alive) return;
-        setInfo({
-          forwarders: Array.isArray(body.forwarders) ? body.forwarders.filter((a): a is string => typeof a === "string") : [],
-          email: typeof body.user?.email === "string" ? body.user.email : null,
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return info;
-}
-
-export function useForwarders(): readonly string[] | null {
-  return useSessionInfo()?.forwarders ?? null;
-}
-
-export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
-  const forwarders = useForwarders();
-  const [device, setDevice] = useState<"desktop" | "phone">(() =>
-    typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "desktop" : "phone",
-  );
+function CopyField({ value, label, data }: { value: string; label: string; data: string }) {
   const [copied, setCopied] = useState(false);
-
   const copy = () => {
-    navigator.clipboard?.writeText(INBOX_ADDRESS).then(
+    navigator.clipboard?.writeText(value).then(
       () => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1500);
@@ -58,14 +20,32 @@ export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
       () => undefined,
     );
   };
-  const sender = forwarders && forwarders.length > 0 ? forwarders.join("、") : "你设置的 Gmail";
+  return (
+    <div className="mt-1.5 flex max-w-xl items-center gap-2 rounded-xl border border-hairline bg-canvas px-3 py-2">
+      <code className="min-w-0 flex-1 truncate font-mono text-sm text-ink select-all" {...{ [data]: true }}>
+        {value}
+      </code>
+      <button type="button" onClick={copy} aria-label={label} className="shrink-0 rounded-lg p-1.5 text-ink-soft hover:bg-raised">
+        {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+      </button>
+    </div>
+  );
+}
+
+export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
+  const { session } = useSession();
+  const inbox = session.inbox;
+  const [device, setDevice] = useState<"desktop" | "phone">(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches ? "desktop" : "phone",
+  );
+  const sender = senderText(session.forwarders);
 
   return (
     <details open={defaultOpen} data-email-guide className="group mb-5 rounded-card border border-hairline bg-surface">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span className="text-sm font-semibold text-ink">
-          怎么把邮件发进来
-          <span className="ml-2 font-normal text-ink-faint">转发到 {INBOX_ADDRESS}</span>
+          手动转发 · 批量导入以前的信
+          <span className="ml-2 font-normal text-ink-faint">漏掉的信转一封；设自动转发之前收到的，一次导很多封</span>
         </span>
         <ChevronDown size={16} aria-hidden className="shrink-0 text-ink-faint transition-transform group-open:rotate-180" />
       </summary>
@@ -73,30 +53,15 @@ export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
       <div className="space-y-5 border-t border-hairline px-4 pt-4 pb-5">
         <div>
           <p className="text-xs text-ink-soft">收信地址</p>
-          <div className="mt-1.5 flex max-w-md items-center gap-2 rounded-xl border border-hairline bg-canvas px-3 py-2">
-            <code className="min-w-0 flex-1 truncate font-mono text-sm text-ink select-all" data-inbox-address>
-              {INBOX_ADDRESS}
-            </code>
-            <button type="button" onClick={copy} aria-label="复制收信地址" className="shrink-0 rounded-lg p-1.5 text-ink-soft hover:bg-raised">
-              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
-            </button>
-          </div>
+          <CopyField value={inbox} label="复制收信地址" data="data-inbox-address" />
           <p className="mt-2 text-xs leading-relaxed text-ink-soft" data-forwarders>
-            只收从 <strong className="font-semibold text-ink">{sender}</strong> 转来的信。用别的邮箱发过来会被直接拒收，看板上看不到。
-          </p>
-        </div>
-
-        <div>
-          <p className="text-sm font-semibold text-ink">自动转发：已经设好，不用管</p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-            Gmail 里的过滤器会把招聘邮件自动转过来，一般一分钟内出现在这里。漏掉的（或者在过滤器设好之前收到的），按下面的步骤手动转一封就行。
-            想改过滤器：Gmail 网页版右上角齿轮 → 查看所有设置 → 过滤器和屏蔽的地址 → 找到「转发到 {INBOX_ADDRESS}」那条 → 修改。
+            只收从 <strong className="font-semibold text-ink">{sender}</strong> 转来的信。用别的邮箱发过来会被直接拒收，看板上看不到。要用别的邮箱转，先在「设置 → 收信」里加上它。
           </p>
         </div>
 
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-ink">手动转发一封</p>
+            <p className="text-sm font-semibold text-ink">转一封</p>
             <div role="tablist" aria-label="在哪转发" className="inline-flex rounded-lg border border-hairline p-0.5 text-xs">
               {(
                 [
@@ -119,7 +84,7 @@ export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
             </div>
           </div>
           <ol className="mt-3 grid gap-3 sm:grid-cols-3" data-guide-steps={device}>
-            {(device === "desktop" ? DESKTOP_STEPS : PHONE_STEPS).map((step, i) => (
+            {(device === "desktop" ? desktopSteps(inbox) : phoneSteps(inbox)).map((step, i) => (
               <li key={step.title} className="flex flex-col rounded-xl border border-hairline bg-canvas p-3">
                 <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-raised/60 p-2" aria-hidden>
                   {step.picture}
@@ -135,17 +100,67 @@ export function EmailGuide({ defaultOpen }: { defaultOpen: boolean }) {
           <p className="mt-2 text-xs text-ink-faint">示意图：按 Gmail 的布局简化画的，按钮位置以你的 Gmail 为准。</p>
         </div>
 
+        <BatchImport inbox={inbox} isOwner={session.role === "owner"} />
+
         <div>
           <p className="text-sm font-semibold text-ink">几点要注意</p>
           <ul className="mt-1 space-y-1 text-xs leading-relaxed text-ink-soft">
-            <li>· 转发时别删掉自动带上的「Forwarded message / 已转发的邮件」那一段：看板靠它认出原发件人和原主题。</li>
-            <li>· 收到就转。信里写「72 小时内完成」这类期限时，看板按<strong className="font-semibold text-ink">你转发的时刻</strong>起算；隔几天再转，算出来的截止时间会偏晚。</li>
+            <li>· 转一封时别删掉自动带上的「Forwarded message / 已转发的邮件 / 原始邮件」那一段：看板靠它认出原发件人和原主题。</li>
+            <li>· 转一封时收到就转。信里写「72 小时内完成」这类期限时，看板按<strong className="font-semibold text-ink">你转发的时刻</strong>起算；隔几天再转，算出来的截止时间会偏晚。批量导入没有这个问题（按原信的时间算）。</li>
             <li>· 转过来的广告会自动收进下面的「已忽略」；整个发件人都不想要，点那封信的「这是广告」。</li>
             <li>· 发完回到这里点左下角「刷新」（页面切回来时也会自动刷新）。</li>
           </ul>
         </div>
       </div>
     </details>
+  );
+}
+
+/**
+ * 批量导入以前的信：在邮箱里一次选中多封，「作为附件转发」到收信地址。
+ * 收信程序会把附件里的原信一封封拆开处理（最多 20 封，见 inbox.ts 的 MAX_ATTACHED_MESSAGES），收信时刻用原信的时间。
+ */
+function BatchImport({ inbox, isOwner }: { inbox: string; isOwner: boolean }) {
+  const ways: readonly { name: string; steps: React.ReactNode }[] = [
+    {
+      name: "Gmail（电脑网页版）",
+      steps: (
+        <>
+          勾选要导入的信 → 上方 <B>⋮ 更多</B> → <B>作为附件转发</B> → 收件人填 <B>{inbox}</B> → 发送。
+        </>
+      ),
+    },
+    {
+      name: "QQ 邮箱",
+      steps: (
+        <>
+          勾选要导入的信 → <B>转发</B>（选了多封时，QQ 会自动把原信打包成附件）→ 收件人填 <B>{inbox}</B> → 发送。
+        </>
+      ),
+    },
+    {
+      name: "其他邮箱",
+      steps: <>找「作为附件转发」这类选项，做法同上；没有的话只能一封封转。</>,
+    },
+  ];
+  return (
+    <div data-batch-import>
+      <p className="text-sm font-semibold text-ink">一次导很多封（以前收到的信）</p>
+      <p className="mt-1 text-xs leading-relaxed text-ink-soft">自动转发只管以后的新信。以前的招聘信，在邮箱里先搜「面试」「笔试」「测评」把它们筛出来，再一次选中多封，作为附件转过来：</p>
+      <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-ink-soft">
+        {ways.map((w) => (
+          <li key={w.name}>
+            · <B>{w.name}</B>：{w.steps}
+          </li>
+        ))}
+      </ul>
+      <ul className="mt-3 space-y-1 rounded-xl bg-raised px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
+        <li>· 每次最多 <B>20 封</B>，多了分几批发。</li>
+        <li>· 时间按<B>原信</B>算，不是你转发的时间，「72 小时内完成」这类期限也照原信算。</li>
+        <li>· 已经过去的面试、笔试会出现在「今天」的「做了吗？」里，标一下「完成」或「没参加」就行。</li>
+        {isOwner ? null : <li>· 每封信用一次 AI，每天 100 次；一次导很多封、当天用完了，剩下的只用规则（时间照算，公司名可能认不出）。</li>}
+      </ul>
+    </div>
   );
 }
 
@@ -192,7 +207,7 @@ function Phone({ children }: { children: React.ReactNode }) {
 
 const SUBJECT = "【示例公司】面试邀请";
 
-const DESKTOP_STEPS: readonly { title: string; text: string; picture: React.ReactNode }[] = [
+const desktopSteps = (inbox: string): readonly { title: string; text: string; picture: React.ReactNode }[] => [
   {
     title: "打开那封信，点「转发」",
     text: "在信的右上角点「⋮」→「转发」；也可以直接点信末尾的「转发」按钮。",
@@ -219,13 +234,13 @@ const DESKTOP_STEPS: readonly { title: string; text: string; picture: React.Reac
   },
   {
     title: "收件人填收信地址",
-    text: `收件人填 ${INBOX_ADDRESS}。正文不用写；下面自动带上的那段原信别删。`,
+    text: `收件人填 ${inbox}。正文不用写；下面自动带上的那段原信别删。`,
     picture: (
       <Desk>
         <div className="flex items-center gap-1 border-b border-hairline pb-1">
           <span className="text-ink-faint">收件人</span>
           <Hot>
-            <span className="font-mono text-[10px]">{INBOX_ADDRESS}</span>
+            <span className="font-mono text-[10px]">{inbox}</span>
           </Hot>
         </div>
         <div className="truncate border-b border-hairline pb-1 text-ink-soft">Fwd: {SUBJECT}</div>
@@ -257,7 +272,7 @@ const DESKTOP_STEPS: readonly { title: string; text: string; picture: React.Reac
   },
 ];
 
-const PHONE_STEPS: readonly { title: string; text: string; picture: React.ReactNode }[] = [
+const phoneSteps = (inbox: string): readonly { title: string; text: string; picture: React.ReactNode }[] => [
   {
     title: "打开那封信，点右上角「⋯」",
     text: "在 Gmail App 里打开要转的信，点右上角的三个点。",
@@ -298,7 +313,7 @@ const PHONE_STEPS: readonly { title: string; text: string; picture: React.ReactN
   },
   {
     title: "填地址，点发送",
-    text: `收件人填 ${INBOX_ADDRESS}，点右上角的纸飞机发送。`,
+    text: `收件人填 ${inbox}，点右上角的纸飞机发送。`,
     picture: (
       <Phone>
         <div className="flex items-center justify-between">
@@ -310,7 +325,7 @@ const PHONE_STEPS: readonly { title: string; text: string; picture: React.ReactN
         <div className="border-b border-hairline pb-0.5 text-ink-faint">收件人</div>
         <div className="break-all">
           <Hot>
-            <span className="font-mono text-[8px]">{INBOX_ADDRESS}</span>
+            <span className="font-mono text-[8px]">{inbox}</span>
           </Hot>
         </div>
         <Line w="w-full" />

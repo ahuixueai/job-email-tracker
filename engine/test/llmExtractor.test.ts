@@ -4,6 +4,7 @@ import {
   MAX_PROMPT_BODY_CHARS,
   ModelExtractor,
   openAICompatibleComplete,
+  fastExtraBody,
   parseModelJson,
 } from "../src/llmExtractor.js";
 import type { FetchLike } from "../src/llmExtractor.js";
@@ -241,6 +242,27 @@ describe("openAICompatibleComplete", () => {
       { role: "system", content: "S" },
       { role: "user", content: "U" },
     ]);
+  });
+
+  it("extraBody 并进请求体，但盖不掉固定字段；DeepSeek 关思考、别家不发", async () => {
+    let body: Record<string, unknown> = {};
+    const complete = openAICompatibleComplete({
+      baseUrl: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      model: "m",
+      extraBody: { thinking: { type: "disabled" }, model: "evil", temperature: 1 },
+      fetchImpl: (_url, init) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return Promise.resolve(okResponse(GOOD_REPLY));
+      },
+    });
+    await complete({ system: "S", user: "U" });
+    expect(body["thinking"]).toEqual({ type: "disabled" });
+    expect(body["model"]).toBe("m");
+    expect(body["temperature"]).toBe(0);
+    expect(fastExtraBody("https://api.deepseek.com/v1")).toEqual({ thinking: { type: "disabled" } });
+    expect(fastExtraBody("https://api.openai.com/v1")).toBeUndefined();
+    expect(fastExtraBody("https://notdeepseek.com.evil.example/v1")).toBeUndefined();
   });
 
   it("HTTP 失败时报状态码，且报错信息里不带密钥", async () => {

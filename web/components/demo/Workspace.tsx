@@ -52,8 +52,8 @@ function saveEdits(edits: UserEdits): void {
 export function Workspace() {
   const mounted = useMounted();
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-16 sm:px-6">
-      {mounted ? <Loaded /> : <p className="pt-10 text-sm text-ink-faint">载入中…</p>}
+    <div>
+      {mounted ? <Loaded /> : <p className="px-6 pt-10 text-sm text-ink-faint">载入中…</p>}
     </div>
   );
 }

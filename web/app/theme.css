@@ -72,6 +72,26 @@
   --jcc-overlay: rgb(11 16 22 / 0.95);
 }
 
+/*
+ * 左侧导航栏是深海军蓝：在导航栏里把基础颜色换掉，里面的按钮、文字、刷新提示自动跟着变。
+ */
+[data-nav-rail] {
+  --jcc-surface: #13283a;
+  --jcc-raised: #1b3449;
+  --jcc-hairline: #23405a;
+  --jcc-ink: #f2f8fd;
+  --jcc-ink-soft: #c3d6e6;
+  --jcc-ink-faint: #9ab4ca;
+  --jcc-brand-soft: #21425e;
+  --jcc-on-brand-soft: #ffffff;
+  --jcc-rail-mark: #ffc93c;
+}
+[data-theme="dark"] [data-nav-rail] {
+  --jcc-surface: #0f1d2a;
+  --jcc-raised: #182a3a;
+  --jcc-hairline: #1f3447;
+}
+
 @theme inline {
   --color-canvas: var(--jcc-canvas);
   --color-surface: var(--jcc-surface);

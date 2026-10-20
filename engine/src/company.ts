@@ -33,6 +33,8 @@ const ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["阿里巴巴", ["阿里巴巴", "alibaba", "阿里", "ali", "淘天"]],
   ["OPPO", ["oppo", "欧珀", "广东欧珀"]],
   ["滴滴", ["滴滴", "didi", "didiglobal", "滴滴出行"]],
+  // 种子表里只有「大疆创新 / DJI」，单说「大疆」认不出（「创新」不是通用后缀）
+  ["大疆创新", ["大疆创新", "大疆", "dji"]],
 ];
 
 /**
@@ -72,6 +74,10 @@ const SUFFIXES: readonly string[] = [
   "集团有限公司",
   "股份公司",
   "控股集团",
+  // 地区后缀：「德勤中国」「百威中国」和「德勤」「百威」是同一家。种子表里的「X中国」别名也是这个意思。
+  // 不收英文的 china：「Yum China」剥成「Yum」会撞上百胜全球（见 NEVER_RESOLVE）
+  "中国区",
+  "中国",
   "集团",
   "公司",
   "股份",
@@ -254,13 +260,25 @@ export function isAtsDomain(senderDomain: string): boolean {
   return matchesDomain(extractDomain(senderDomain), ATS_DOMAINS);
 }
 
+/** 个人邮箱、招聘网站：域名本身说明不了是哪家公司。 */
+const NOT_A_COMPANY_DOMAIN = /(?:^|\.)(?:gmail|googlemail|outlook|hotmail|live|yahoo|icloud|me|qq|foxmail|163|126|yeah|sina|sohu|139|aliyun|proton|protonmail|wisdomore|zhaopin|51job|lietou-edm|liepin|nowcoder|shixiseng|yingjiesheng|linkedin|indeed|glassdoor|zhipin)\.[a-z.]+$/;
+
+/** 域名里不说明是哪家的那几段：顶级域、二级公共后缀。 */
+const PUBLIC_SUFFIX_LABELS: ReadonlySet<string> = new Set(["com", "cn", "net", "org", "edu", "gov", "co", "io", "hk", "sg", "uk", "jp", "us", "tw", "mo", "de", "fr", "ai"]);
+
 function canonicalFromDomain(senderDomain: string): string | null {
   const domain = extractDomain(senderDomain);
   if (domain.length === 0 || isAtsDomain(domain)) return null;
   for (const [hint, canonical] of DOMAIN_HINTS) {
     if (domain === hint || domain.endsWith(`.${hint}`)) return canonical;
   }
-  return null;
+  // 域名主体本身就是别名表里的名字（dji.com → DJI → 大疆创新、deloitte.com.cn → 德勤）
+  if (NOT_A_COMPANY_DOMAIN.test(domain)) return null;
+  const labels = domain.split(".");
+  while (labels.length > 1 && PUBLIC_SUFFIX_LABELS.has(labels[labels.length - 1]!)) labels.pop();
+  const label = labels[labels.length - 1] ?? "";
+  if (label.length < 2 || labels.length === domain.split(".").length) return null;
+  return ALIAS_INDEX.get(matchKey(label)) ?? null;
 }
 
 /**
@@ -278,22 +296,125 @@ export function normalizeCompany(
   raw: string,
   senderDomain?: string,
 ): NormalizedCompany {
-  const exact = AMBIGUOUS_EXACT.get(lightKey(raw ?? ""));
-  if (exact) return { canonical: exact, matched: true };
-
-  const cleaned = cleanCompanyName(raw ?? "");
-
-  if (cleaned.length > 0) {
-    const hit = ALIAS_INDEX.get(matchKey(cleaned));
-    if (hit) return { canonical: hit, matched: true };
-  }
+  const byName = matchName(raw ?? "");
+  if (byName) return { canonical: byName, matched: true };
 
   if (senderDomain) {
     const byDomain = canonicalFromDomain(senderDomain);
     if (byDomain) return { canonical: byDomain, matched: true };
   }
 
-  return { canonical: cleaned, matched: false };
+  return { canonical: cleanCompanyName(raw ?? ""), matched: false };
+}
+
+/**
+ * 只用名字查别名表（不看域名）。查不到返回 null。
+ *
+ * 中英混写拆开分别查：「DJI 大疆」「大疆DJI」「dji大疆」整体不在表里，
+ * 但「DJI」「大疆」各自都指向大疆创新。拆出来的几段**必须指向同一家**才算数，
+ * 指向两家（「京东 阿里」）就当没认出——错并两家比认不出糟。
+ */
+function matchName(raw: string): string | null {
+  const exact = AMBIGUOUS_EXACT.get(lightKey(raw));
+  if (exact) return exact;
+  const cleaned = cleanCompanyName(raw);
+  if (cleaned.length === 0) return null;
+  const whole = ALIAS_INDEX.get(matchKey(cleaned));
+  if (whole) return whole;
+
+  // 只在中文与英文交界处拆；英文内部的空格不拆（「Loreal Group Holdings」不能拆出「Loreal」）
+  const segments = (cleaned.match(/[\u3400-\u9fff]+|[A-Za-z0-9][A-Za-z0-9&.'\u2019\s-]*/g) ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
+  if (segments.length < 2) return null;
+  const hits = new Set<string>();
+  for (const segment of segments) {
+    const hit = AMBIGUOUS_EXACT.get(lightKey(segment)) ?? ALIAS_INDEX.get(matchKey(segment));
+    if (hit) hits.add(hit);
+  }
+  return hits.size === 1 ? [...hits][0]! : null;
+}
+
+/**
+ * 发件人显示名、标题里的套话。显示名常是「CN Deloitte Campus Recruitment Service」
+ * 「DJI大疆校园招聘」这种：去掉套话剩下的才是公司名；剩不下东西就说明它不是公司名。
+ * 招聘网站自己的名字（智联、猎聘…）也算套话：它们转发的是别家的岗位，不能当成公司。
+ */
+const GENERIC_WORDS: readonly string[] = [
+  // 中文，长的在前
+  "校园招聘", "社会招聘", "人力资源部", "人力资源", "招聘中心", "招聘团队", "招聘小组", "招聘通知", "招聘助手",
+  "智联招聘", "智联推荐", "前程无忧", "猎聘网", "猎聘", "智联", "牛客网", "牛客", "实习僧", "应届生", "BOSS直聘",
+  "秋季招聘", "春季招聘", "秋招", "春招", "校招", "招聘", "人才", "团队", "服务", "中心", "系统", "小助手", "助手",
+  "官方", "通知", "提醒", "重要", "紧急", "邀请函", "邀请", "在线", "面试", "笔试", "测评", "推荐", "实习", "管培生",
+];
+const GENERIC_TOKENS: ReadonlySet<string> = new Set([
+  "hr", "recruitment", "recruiting", "recruiter", "recruit", "campus", "talent", "talents", "acquisition", "careers", "career",
+  "service", "services", "team", "noreply", "no-reply", "donotreply", "notification", "notifications", "notice", "system",
+  "official", "cn", "china", "university", "graduate", "graduates", "program", "programme", "jobs", "job", "hiring", "people",
+  "linkedin", "moka", "beisen", "feishu", "workday", "greenhouse",
+]);
+
+/** 去掉套话之后剩下的部分；剩不下（或只剩一个字）返回空串。 */
+export function stripGenericWords(value: string): string {
+  let out = value.replace(/[|｜:：_·•\-–—/【】[\]（）()「」"“”]+/g, " ");
+  // 届别、年份：「27届」「2027」「26/27」不是公司名的一部分
+  out = out.replace(/(?:20)?\d{2}\s*届|20\d{2}\s*年?|\d{2}\s*\/\s*\d{2}/g, " ");
+  for (const word of GENERIC_WORDS) out = out.split(word).join(" ");
+  const tokens = out
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && !GENERIC_TOKENS.has(t.toLowerCase()));
+  const joined = tokens.join(" ").trim();
+  return [...joined.replace(/\s+/g, "")].length >= 2 ? joined : "";
+}
+
+/** 一看就是机构名的字样。认不出的显示名要带着它们之一才当公司名用（人名不会带）。 */
+const COMPANY_WORD =
+  /(?:集团|公司|科技|银行|证券|基金|资本|控股|汽车|医疗|保险|咨询|事务所|研究院|研究所|电子|信息|网络|软件|智能|能源|材料|生物|医药|制药|传媒|文化|教育|地产|物流|航空|电气|通信|半导体|实业|股份|国际|机器人|互联网|游戏)/;
+
+export interface CompanySignals {
+  /** 模型摘的公司名。 */
+  raw: string | null;
+  senderDomain: string;
+  /** 发件人显示名。 */
+  senderName?: string;
+  /** 标题里按固定格式取出的公司名（「【星河科技】…」「来自X的…」），没有为 null。 */
+  subjectName?: string | null;
+}
+
+export type CompanySource = "model" | "domain" | "sender" | "subject" | "none";
+
+/**
+ * 公司从哪儿来，按把握从高到低：
+ *
+ * 1. 认得出的（命中别名表）：模型摘的名字 → 发件域名（含「dji.com」这种域名本身就是别名的）
+ *    → 发件人显示名 → 标题格式。
+ * 2. 都认不出时，退回原样显示：模型摘的 → 标题格式 → 显示名（**只在发件域名是招聘系统时**，
+ *    因为北森、Moka 这类系统的显示名就是用人公司的名字；公司自己的域名发信时，显示名多半是「HR」）。
+ *
+ * 模型超时、没有模型时，后面几条就是公司名的唯一来源。
+ */
+export function resolveCompany(signals: CompanySignals): NormalizedCompany & { source: CompanySource } {
+  const raw = signals.raw ?? "";
+  const fromModel = normalizeCompany(raw, signals.senderDomain);
+  if (fromModel.matched) {
+    const byName = matchName(raw);
+    return { ...fromModel, source: byName ? "model" : "domain" };
+  }
+
+  const sender = stripGenericWords(signals.senderName ?? "");
+  const subject = stripGenericWords(signals.subjectName ?? "");
+  const bySender = sender.length > 0 ? matchName(sender) : null;
+  if (bySender) return { canonical: bySender, matched: true, source: "sender" };
+  const bySubject = subject.length > 0 ? matchName(subject) : null;
+  if (bySubject) return { canonical: bySubject, matched: true, source: "subject" };
+
+  if (fromModel.canonical.length > 0) return { ...fromModel, source: "model" };
+  if (subject.length > 0) return { canonical: cleanCompanyName(subject), matched: false, source: "subject" };
+  // 北森这类系统的显示名常常是招聘专员本人（「张某某 <noreply@…ibeisen.com>」），
+  // 所以认不出的显示名只有带着公司字样（集团、科技、银行…）才用
+  if (sender.length > 0 && isAtsDomain(signals.senderDomain) && COMPANY_WORD.test(sender)) {
+    return { canonical: cleanCompanyName(sender), matched: false, source: "sender" };
+  }
+  return { canonical: "", matched: false, source: "none" };
 }
 
 /** 两个写法是否指向同一家公司。只有双方都命中别名表才算数。 */

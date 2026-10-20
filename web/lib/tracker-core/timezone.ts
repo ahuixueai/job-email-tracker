@@ -341,12 +341,17 @@ export interface TimeZoneSignals {
   senderDomain?: string;
   /** 台账里这家公司已有的地区记录。 */
   knownCompanyRegion?: string;
+  /**
+   * 用户自己设置的「求职地」时区（IANA 名）。只在前四条线索都没有时才用。
+   * 它是用户本人给的依据，不是系统兜底，所以不违反「不猜时区」。
+   */
+  jobTimeZone?: string;
 }
 
 export interface TimeZoneInference {
   tz: IanaTimeZone | null;
   confidence: Confidence;
-  source: "explicit" | "location" | "domain" | "ledger" | "none";
+  source: "explicit" | "location" | "domain" | "ledger" | "jobRegion" | "none";
   /** 命中了哪条线索，便于人工复核。 */
   reason: string;
 }
@@ -359,8 +364,9 @@ export interface TimeZoneInference {
  * 1. **绝不因为邮件是英文就推成美国时区。** 四大和外企在华校招全用英文发信，
  *    「某公司(Shenzhen)」「某公司(Chinese Mainland)」这类写法都是实例，判错就是 12 小时误差。
  *    语言在整个优先级链里根本不出现。
- * 2. **绝不兜底成 Asia/Shanghai。** 无线索就返回 null——默认一个错时区比
+ * 2. **系统自己绝不兜底成 Asia/Shanghai。** 无线索就返回 null——默认一个错时区比
  *    承认不知道危险得多，用户会看到一个自信但错误的时刻。
+ *    唯一的例外是用户自己设置的「求职地」（P5）：那是用户给的依据，并且结论里写明来源。
  * 3. **国际 ATS 域名不含地域信息。** Greenhouse 的客户遍布全球，
  *    不能因为它是美国公司的产品就推出美东时区。
  */
@@ -420,6 +426,19 @@ export function inferTimeZone(signals: TimeZoneSignals): TimeZoneInference {
         confidence: "medium",
         source: "ledger",
         reason: `台账记录该公司地区为「${signals.knownCompanyRegion}」→ ${fromLedger}`,
+      };
+    }
+  }
+
+  // P5 用户设置的求职地。排在最后：信里、域名、这家公司的记录，任何一条线索都比它具体。
+  if (signals.jobTimeZone !== undefined) {
+    const zone = signals.jobTimeZone.trim();
+    if (zone.includes("/") && isValidTimeZone(zone)) {
+      return {
+        tz: zone,
+        confidence: "medium",
+        source: "jobRegion",
+        reason: `信里没写时区，按你设置的求职地 → ${zone}`,
       };
     }
   }

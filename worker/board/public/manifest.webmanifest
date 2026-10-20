@@ -1,16 +1,16 @@
 {
-  "name": "求职看板",
-  "short_name": "求职看板",
+  "name": "准点 InterviewTrack",
+  "short_name": "准点",
   "description": "笔试、测评、面试的日程与投递进度",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f2f8fd",
-  "theme_color": "#3f83b5",
+  "theme_color": "#13283a",
   "lang": "zh-CN",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { handleApi } from "../src/api";
 import { prepare } from "../src/prepare";
 import type { Env } from "../src/types";
-import { fakeDb } from "./fakeDb";
+import { member, owner, setup } from "./helpers";
 
 const PASSWORD = "test-password";
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const LLM = { LLM_API_KEY: "k", LLM_BASE_URL: "https://llm.example/v1", LLM_MODEL: "m" };
 
-function env(db = fakeDb().db, over: Partial<Env> = {}): Env {
-  return { DB: db, BOARD_PASSWORD: PASSWORD, OWNER_EMAIL: "owner@example.com", ...LLM, ...over } as unknown as Env;
+function env(over: Partial<Env> = {}): Env {
+  return setup({ BOARD_PASSWORD: PASSWORD, ...LLM, ...over }).e;
 }
 const req = (path: string, init: { method?: string; body?: string; cookie?: string } = {}) =>
   new Request(`https://board.example${path}`, {
@@ -22,7 +22,7 @@ async function login(e: Env): Promise<string> {
   return (res.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 }
 
-const REQUEST = { company: "美团", role: "产品经理", kind: "视频面试", when: null, emails: [{ subject: "面试邀请", body: "请准时参加二面", receivedAtUtc: "2026-10-10T00:00:00Z" }] };
+const REQUEST = { company: "星河科技", role: "产品经理", kind: "视频面试", when: null, emails: [{ subject: "面试邀请", body: "请准时参加二面", receivedAtUtc: "2026-10-10T00:00:00Z" }] };
 const GOOD = JSON.stringify({ focus: [{ point: "用户洞察", basis: "面试邀请" }], questions: [{ type: "行为", q: "讲一次失败经历" }], stories: [], checklist: ["业务线"] });
 
 function replying(content: string, seen: { body?: string } = {}) {
@@ -56,21 +56,40 @@ describe("AI 面试准备", () => {
     const cookie = await login(e);
     await handleApi(req("/api/resume", { method: "PUT", cookie, body: JSON.stringify({ text: "星河科技 用户调研" }) }), e, NOW);
     const seen: { body?: string } = {};
-    const r = await prepare(e, REQUEST, replying(GOOD, seen));
+    const r = await prepare(e, await owner(e), NOW, REQUEST, replying(GOOD, seen));
     expect(r).toMatchObject({ ok: true, usedResume: true, prep: { questions: [{ type: "行为", q: "讲一次失败经历" }] } });
     expect(seen.body).toContain("星河科技 用户调研");
     expect(seen.body).toContain("请准时参加二面");
   });
 
   it("没简历：照样生成，标明没用简历", async () => {
-    const r = await prepare(env(), REQUEST, replying(GOOD));
+    const e = env();
+    const r = await prepare(e, await owner(e), NOW, REQUEST, replying(GOOD));
     expect(r).toMatchObject({ ok: true, usedResume: false });
   });
 
   it("模型回的不是要的格式、模型挂了、请求不对、没配置模型：都给明白的错误", async () => {
-    expect(await prepare(env(), REQUEST, replying('{"questions":[]}'))).toMatchObject({ ok: false, status: 502 });
-    expect(await prepare(env(), REQUEST, () => Promise.reject(new Error("down")))).toMatchObject({ ok: false, status: 502 });
-    expect(await prepare(env(), { company: "美团" })).toMatchObject({ ok: false, status: 400 });
-    expect(await prepare(env(fakeDb().db, { LLM_API_KEY: "" }), REQUEST)).toMatchObject({ ok: false, status: 503 });
+    const e = env();
+    const me = await owner(e);
+    expect(await prepare(e, me, NOW, REQUEST, replying('{"questions":[]}'))).toMatchObject({ ok: false, status: 502 });
+    expect(await prepare(e, me, NOW, REQUEST, () => Promise.reject(new Error("down")))).toMatchObject({ ok: false, status: 502 });
+    expect(await prepare(e, me, NOW, { company: "星河科技" })).toMatchObject({ ok: false, status: 400 });
+    const noModel = env({ LLM_API_KEY: "" });
+    expect(await prepare(noModel, await owner(noModel), NOW, REQUEST)).toMatchObject({ ok: false, status: 503 });
+  });
+
+  it("关了 AI、额度用完：不调模型，说清楚原因", async () => {
+    const e = env({ AI_DAILY_LIMIT: "1" });
+    let calls = 0;
+    const counting = (url: string, init: { body: string }) => {
+      calls += 1;
+      return replying(GOOD)(url, init);
+    };
+    const off = await member(e, "off@x.example", { ai_enabled: 0 });
+    expect(await prepare(e, off, NOW, REQUEST, counting)).toMatchObject({ ok: false, status: 403, error: expect.stringContaining("关掉了 AI") });
+    const m = await member(e, "m@x.example");
+    expect(await prepare(e, m, NOW, REQUEST, counting)).toMatchObject({ ok: true });
+    expect(await prepare(e, m, NOW, REQUEST, counting)).toMatchObject({ ok: false, status: 403, error: expect.stringContaining("额度用完") });
+    expect(calls).toBe(1);
   });
 });
